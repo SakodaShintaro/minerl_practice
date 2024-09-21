@@ -21,6 +21,8 @@ class MineRLObsWrapper(gym.ObservationWrapper):
 class MineRLActionWrapper(gym.ActionWrapper):
     """A wrapper to convert Dict action to MultiDiscrete for Stable-Baselines3 compatibility."""
 
+    BIN_SIZE = 7
+
     def __init__(self, env: gym.Env) -> None:
         super().__init__(env)
         # MineRLのアクションスペースのDictをMultiDiscreteに変換
@@ -37,8 +39,8 @@ class MineRLActionWrapper(gym.ActionWrapper):
                 2,  # sneak
                 2,  # use
                 8,  # hotbar selection (9 hotbars)
-                3,  # camera pitch
-                3,  # camera yaw
+                MineRLActionWrapper.BIN_SIZE,  # camera pitch
+                MineRLActionWrapper.BIN_SIZE,  # camera yaw
             ],
         )
 
@@ -69,13 +71,9 @@ class MineRLActionWrapper(gym.ActionWrapper):
 
     def decode_camera(self, camera_action: int) -> float:
         """Camera action decoding (for pitch and yaw)."""
-        if camera_action == 0:
-            return -1.0  # Move camera down/left
-        if camera_action == 1:
-            return 0.0  # No camera movement
-        if camera_action == 2:
-            return 1.0  # Move camera up/right
-        raise ValueError(f"Invalid camera action {camera_action}")
+        half = MineRLActionWrapper.BIN_SIZE // 2
+        shifted = camera_action - half
+        return shifted * 180 / half
 
 
 env = gym.make("MineRLObtainDiamondShovel-v0")
@@ -83,7 +81,7 @@ env = MineRLObsWrapper(env)
 env = MineRLActionWrapper(env)
 
 model = A2C("CnnPolicy", env, verbose=1)
-model.learn(total_timesteps=400)
+model.learn(total_timesteps=800)
 
 obs = env.reset()
 for _ in range(1000):
