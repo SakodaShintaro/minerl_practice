@@ -1,9 +1,12 @@
 """Train a model using Stable Baselines3."""
 
+from pathlib import Path
+
 import gym
 import minerl  # noqa: F401
 import numpy as np
 from gym import spaces
+from PIL import Image
 from stable_baselines3 import A2C
 
 
@@ -46,7 +49,6 @@ class MineRLActionWrapper(gym.ActionWrapper):
 
     def action(self, action: np.ndarray) -> dict:
         """Convert the MultiDiscrete action back to the Dict action format."""
-        # MultiDiscrete -> Dictアクションの変換
         return {
             "ESC": action[0],
             "attack": action[1],
@@ -76,15 +78,30 @@ class MineRLActionWrapper(gym.ActionWrapper):
         return shifted * 180 / half
 
 
+# 環境の作成
 env = gym.make("MineRLObtainDiamondShovel-v0")
 env = MineRLObsWrapper(env)
 env = MineRLActionWrapper(env)
 
+# モデルのトレーニング
 model = A2C("CnnPolicy", env, verbose=1)
-model.learn(total_timesteps=800)
+model.learn(total_timesteps=1600)
 
+# 観察データのリセットとステップ
 obs = env.reset()
-for _ in range(1000):
+image_save_dir = Path("obs_images")
+image_save_dir.mkdir(exist_ok=True)
+for step in range(1000):
     action, _state = model.predict(obs, deterministic=True)
     obs, reward, done, info = env.step(action)
+
+    # 観察データを画像として保存
+    img = Image.fromarray(obs)
+    img.save(image_save_dir / f"obs_{step:08d}.png")
+
     env.render()
+
+    if done:
+        obs = env.reset()
+
+env.close()
