@@ -17,7 +17,7 @@ obs = env.reset()
 obs = np.copy(obs["pov"])
 done = False
 
-CHECK_VAE_RECONSTRUCTION = True
+CHECK_VAE_RECONSTRUCTION = False
 
 if CHECK_VAE_RECONSTRUCTION:
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -42,7 +42,7 @@ while not done:
     print(action)
 
     # save obs and action
-    Image.fromarray(np.concatenate([obs], axis=0)).save(save_obs_dir / f"{step:08d}.png")
+    Image.fromarray(obs).save(save_obs_dir / f"{step:08d}.png")
     with (save_action_dir / f"{step:08d}.json").open("w") as f:
         action_serializable = {
             k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in action.items()
@@ -51,11 +51,11 @@ while not done:
 
     # step
     obs, reward, done, _ = env.step(action)
+    obs = np.copy(obs["pov"])
     step += 1
 
     # vae
     if CHECK_VAE_RECONSTRUCTION:
-        obs = np.copy(obs["pov"])
         x = torch.tensor(obs).permute(2, 0, 1).unsqueeze(0).float().div_(255).to(device)
         z = vae.encode(x).latent_dist.sample().mul_(0.18215)
         x_hat = vae.decode(z / 0.18215).sample
@@ -63,3 +63,6 @@ while not done:
         Image.fromarray(obs_hat).save(save_obs_hat_dir / f"{step:08d}.png")
 
     env.render()
+
+# 最後の結果を保存
+Image.fromarray(obs).save(save_obs_dir / f"{step:08d}.png")
