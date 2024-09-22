@@ -1,0 +1,3 @@
+diffusers
+safetensors
+accelerate
