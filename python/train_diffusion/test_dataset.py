@@ -6,7 +6,6 @@ from pathlib import Path
 from minerl_dataset import MineRLDataset
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from train import center_crop_arr
 
 
 def parse_args() -> argparse.Namespace:
