@@ -181,7 +181,7 @@ class DiT(nn.Module):
 
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
-        self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
+        self.action_embedder = nn.Linear(24, hidden_size)
         num_patches = self.x_embedder.num_patches
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
@@ -214,7 +214,7 @@ class DiT(nn.Module):
         nn.init.constant_(self.x_embedder.proj.bias, 0)
 
         # Initialize label embedding table:
-        nn.init.normal_(self.y_embedder.embedding_table.weight, std=0.02)
+        nn.init.normal_(self.action_embedder.weight, std=0.02)
 
         # Initialize timestep embedding MLP:
         nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
@@ -246,21 +246,32 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y):
+    def forward(self, x, t, cond_image, cond_action):
         """
         Forward pass of DiT.
-        x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
+        x: (N, T_in, C, H, W) tensor of spatial inputs (latent representations of images)
         t: (N,) tensor of diffusion timesteps
-        y: (N,) tensor of class labels
+        cond_image: (N, T_cond, C, H, W) tensor of spatial inputs (latent representations of images)
+        cond_action: (N, T_in + T_cond, D) tensor of class labels
         """
-        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        N, T_in, C, H, W = x.shape
+        T_cond = cond_image.shape[1]
+        T_sum = T_in + T_cond
+        image = torch.cat([cond_image, x], dim=1) # (N, T_sum, C, H, W)
+        image = image.reshape(N * T_sum, C, H, W)  # (N * T_sum, C, H, W)
+        image = self.x_embedder(image) + self.pos_embed  # (N * T_sum, L, D), where L = H * W / patch_size ** 2
+        L, D = image.shape[1:3]
+        image = image.reshape(N, T_sum * L, D)  # (N, T_sum * L, D)
         t = self.t_embedder(t)  # (N, D)
-        y = self.y_embedder(y, self.training)  # (N, D)
-        c = t + y  # (N, D)
+        action = self.action_embedder(cond_action)  # (N, T_sum, D)
+        x = torch.cat([image, action], dim=1)  # (N, T_sum * (L + 1), D)
+        c = t  # (N, D)
         for block in self.blocks:
-            x = block(x, c)  # (N, T, D)
-        x = self.final_layer(x, c)  # (N, T, patch_size ** 2 * out_channels)
-        x = self.unpatchify(x)  # (N, out_channels, H, W)
+            x = block(x, c)  # (N, T_sum * (L + 1), D)
+        x = x[:, 0:(T_in * L)] # (N, T_in * L, D)
+        x = self.final_layer(x, c)  # (N, T_in * L, patch_size ** 2 * out_channels)
+        x = self.unpatchify(x)  # (N * T_in, out_channels, H, W)
+        x = x.reshape(N, T_in, self.out_channels, H, W)  # (N, T_in, out_channels, H, W)
         return x
 
     def forward_with_cfg(self, x, t, y, cfg_scale):

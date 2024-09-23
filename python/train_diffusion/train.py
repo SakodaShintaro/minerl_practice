@@ -169,10 +169,9 @@ def main(args: argparse.Namespace) -> None:  # noqa: PLR0915
 
             cond_image = image[:, :-1]
             pred_image = image[:, -1:]
-            print(cond_image.shape, pred_image.shape)
 
             model_kwargs = {"cond_image": cond_image, "cond_action": action}
-            loss_dict = diffusion.training_losses(model, image, t, model_kwargs)
+            loss_dict = diffusion.training_losses(model, pred_image, t, model_kwargs)
             loss = loss_dict["loss"].mean()
             opt.zero_grad()
             loss.backward()

@@ -738,9 +738,9 @@ class GaussianDiffusion:
                 ModelVarType.LEARNED,
                 ModelVarType.LEARNED_RANGE,
             ]:
-                B, C = x_t.shape[:2]
-                assert model_output.shape == (B, C * 2, *x_t.shape[2:])
-                model_output, model_var_values = th.split(model_output, C, dim=1)
+                B, T, C = x_t.shape[:3]
+                assert model_output.shape == (B, T, C * 2, *x_t.shape[3:])
+                model_output, model_var_values = th.split(model_output, C, dim=2)
                 # Learn the variance using the variational bound, but don't let
                 # it affect our mean prediction.
                 frozen_out = th.cat([model_output.detach(), model_var_values], dim=1)
