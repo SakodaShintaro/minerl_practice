@@ -18,7 +18,7 @@ import torch
 from diffusers.models import AutoencoderKL
 from diffusion import create_diffusion
 from minerl_dataset import MineRLDataset
-from models import DiT_models
+from models import DiT
 from PIL import Image
 from sample import sample_images
 from torch.utils.data import DataLoader
@@ -106,8 +106,7 @@ def main(args: argparse.Namespace) -> None:  # noqa: PLR0915
 
     # Create model:
     assert args.image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
-    latent_size = args.image_size // 8
-    model = DiT_models[args.model](input_size=latent_size)
+    model = DiT(depth=12, hidden_size=384, patch_size=5, num_heads=6, input_size=(45, 80))
     # Note that parameter initialization is done within the DiT constructor
     ema = deepcopy(model).to(device)  # Create an EMA of the model for use after training
     requires_grad(ema, flag=False)
@@ -166,8 +165,13 @@ def main(args: argparse.Namespace) -> None:  # noqa: PLR0915
                 image = vae.encode(image).latent_dist.sample().mul_(0.18215)
                 image = image.view(b, seq, 4, hidden_h, hidden_w)
             t = torch.randint(0, diffusion.num_timesteps, (image.shape[0],), device=device)
-            model_kwargs = {"action": action}
-            loss_dict = diffusion.training_losses(model, image, t, model_kwargs)
+
+            cond_image = image[:, :-1]
+            pred_image = image[:, -1:]
+            print(cond_image.shape, pred_image.shape)
+
+            model_kwargs = {"cond_image": cond_image, "cond_action": action}
+            loss_dict = diffusion.training_losses(model, pred_image, t, model_kwargs)
             loss = loss_dict["loss"].mean()
             opt.zero_grad()
             loss.backward()
@@ -244,7 +248,6 @@ def main(args: argparse.Namespace) -> None:  # noqa: PLR0915
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
     parser.add_argument("--image-size", type=int, default=128)
     parser.add_argument("--data-path", type=Path, required=True)
     parser.add_argument("--results-dir", type=Path, default="results")
