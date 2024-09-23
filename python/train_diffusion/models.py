@@ -67,15 +67,16 @@ class TimestepEmbedder(nn.Module):
         return t_emb
 
 
-class ActionEmbedder(nn.Module):
+class LabelEmbedder(nn.Module):
     """
     Embeds class labels into vector representations. Also handles label dropout for classifier-free guidance.
     """
 
-    def __init__(self, in_size, hidden_size, dropout_prob):
+    def __init__(self, num_classes, hidden_size, dropout_prob):
         super().__init__()
-        self.embedding_table = nn.Linear(in_size, hidden_size)
-        self.in_size = in_size
+        use_cfg_embedding = dropout_prob > 0
+        self.embedding_table = nn.Embedding(num_classes + use_cfg_embedding, hidden_size)
+        self.num_classes = num_classes
         self.dropout_prob = dropout_prob
 
     def token_drop(self, labels, force_drop_ids=None):
@@ -86,7 +87,7 @@ class ActionEmbedder(nn.Module):
             drop_ids = torch.rand(labels.shape[0], device=labels.device) < self.dropout_prob
         else:
             drop_ids = force_drop_ids == 1
-        labels = torch.where(drop_ids, self.in_size, labels)
+        labels = torch.where(drop_ids, self.num_classes, labels)
         return labels
 
     def forward(self, labels, train, force_drop_ids=None):
@@ -168,6 +169,7 @@ class DiT(nn.Module):
         num_heads=16,
         mlp_ratio=4.0,
         class_dropout_prob=0.1,
+        num_classes=1000,
         learn_sigma=True,
     ):
         super().__init__()
@@ -179,7 +181,7 @@ class DiT(nn.Module):
 
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
-        self.action_embedder = torch.nn.Linear(24, hidden_size)
+        self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
         num_patches = self.x_embedder.num_patches
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
@@ -202,9 +204,7 @@ class DiT(nn.Module):
 
         # Initialize (and freeze) pos_embed by sin-cos embedding:
         pos_embed = get_2d_sincos_pos_embed(
-            self.pos_embed.shape[-1],
-            grid_size_h=45 // self.patch_size,
-            grid_size_w=80 // self.patch_size,
+            self.pos_embed.shape[-1], int(self.x_embedder.num_patches**0.5)
         )
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
@@ -214,7 +214,7 @@ class DiT(nn.Module):
         nn.init.constant_(self.x_embedder.proj.bias, 0)
 
         # Initialize label embedding table:
-        nn.init.normal_(self.action_embedder.weight, std=0.02)
+        nn.init.normal_(self.y_embedder.embedding_table.weight, std=0.02)
 
         # Initialize timestep embedding MLP:
         nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
@@ -246,46 +246,21 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, cond_image, cond_action):
+    def forward(self, x, t, y):
         """
         Forward pass of DiT.
-        x: (N, T_in, C, H, W) tensor of spatial inputs (latent representations of images)
+        x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
         t: (N,) tensor of diffusion timesteps
-        cond_image: (N, T_cond, C, H, W) tensor of conditional images
-        cond_action: (N, T_cond, C_a) tensor of conditional action
+        y: (N,) tensor of class labels
         """
-        N, T_in, C, H, W = x.shape
-        x = x.view(N * T_in, C, H, W)
-        x = (
-            self.x_embedder(x) + self.pos_embed
-        )  # (N * T_in, C', D), where C' = H * W / patch_size ** 2
-        x = x.view(N, T_in, x.shape[1], x.shape[2])  # (N, T_in, C', D)
-
+        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)  # (N, D)
-
-        T_cond = cond_image.shape[1]
-        cond_image = cond_image.reshape(N * T_cond, C, H, W)
-        cond_image = (
-            self.x_embedder(cond_image) + self.pos_embed
-        )  # (N * T_cond, C', D), where C' = H * W / patch_size ** 2
-        cond_image = cond_image.view(N, T_cond, cond_image.shape[1], cond_image.shape[2])
-        # (N, T_cond, C', D)
-
-        T = T_in + T_cond
-        cond_action = cond_action.view(N * T, -1)  # (N * T, C_a)
-        cond_action = self.action_embedder(cond_action)  # (N * T, D)
-        cond_action = cond_action.view(N, T, -1)  # (N, T, D)
-
+        y = self.y_embedder(y, self.training)  # (N, D)
+        c = t + y  # (N, D)
         for block in self.blocks:
-            x = block(x, t, cond_image, cond_action)  # (N, T_in, C', D)
-        x = self.final_layer(
-            x, t, cond_image, cond_action
-        )  # (N, T_in, C', patch_size ** 2 * out_channels)
-        x = x.view(
-            N * T_in, x.shape[2], x.shape[3]
-        )  # (N * T_in, C', patch_size ** 2 * out_channels)
-        x = self.unpatchify(x)  # (N * T_in, out_channels, H, W)
-        x = x.view(N, T_in, self.out_channels, H, W)  # (N, T_in, out_channels, H, W)
+            x = block(x, c)  # (N, T, D)
+        x = self.final_layer(x, c)  # (N, T, patch_size ** 2 * out_channels)
+        x = self.unpatchify(x)  # (N, out_channels, H, W)
         return x
 
     def forward_with_cfg(self, x, t, y, cfg_scale):
@@ -313,18 +288,18 @@ class DiT(nn.Module):
 # https://github.com/facebookresearch/mae/blob/main/util/pos_embed.py
 
 
-def get_2d_sincos_pos_embed(embed_dim, grid_size_h, grid_size_w, cls_token=False, extra_tokens=0):
+def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0):
     """
     grid_size: int of the grid height and width
     return:
     pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
     """
-    grid_h = np.arange(grid_size_h, dtype=np.float32)
-    grid_w = np.arange(grid_size_w, dtype=np.float32)
+    grid_h = np.arange(grid_size, dtype=np.float32)
+    grid_w = np.arange(grid_size, dtype=np.float32)
     grid = np.meshgrid(grid_w, grid_h)  # here w goes first
     grid = np.stack(grid, axis=0)
 
-    grid = grid.reshape([2, 1, grid_size_h, grid_size_w])
+    grid = grid.reshape([2, 1, grid_size, grid_size])
     pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
     if cls_token and extra_tokens > 0:
         pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
