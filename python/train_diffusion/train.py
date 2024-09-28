@@ -228,7 +228,7 @@ if __name__ == "__main__":
                 torch.save(checkpoint, checkpoint_path)
                 logger.info(f"Saved checkpoint to {checkpoint_path}")
                 model.eval()
-                samples = sample_images(model, vae)
+                samples = sample_images(model, vae, args)
                 save_image(
                     samples,
                     results_dir / f"sample_{train_steps:07d}.png",

@@ -23,7 +23,25 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
 
-def sample_images(model: torch.nn.Module, vae: AutoencoderKL) -> torch.Tensor:
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
+    parser.add_argument("--data-path", type=Path, required=True)
+    parser.add_argument("--global-batch-size", type=int, default=8)
+    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--num-classes", type=int, default=1000)
+    parser.add_argument("--cfg-scale", type=float, default=4.0)
+    parser.add_argument("--num-sampling-steps", type=int, default=250)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--ckpt", type=Path, required=True)
+    return parser.parse_args()
+
+
+def sample_images(
+    model: torch.nn.Module,
+    vae: AutoencoderKL,
+    args: argparse.Namespace,
+) -> torch.Tensor:
     transform = transforms.Compose(
         [
             transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
@@ -95,7 +113,9 @@ def sample_images(model: torch.nn.Module, vae: AutoencoderKL) -> torch.Tensor:
     return results
 
 
-def main(args: argparse.Namespace) -> None:
+if __name__ == "__main__":
+    args = parse_args()
+
     # Setup PyTorch:
     torch.manual_seed(args.seed)
     torch.set_grad_enabled(False)
@@ -112,7 +132,7 @@ def main(args: argparse.Namespace) -> None:
     model.eval()  # important!
     vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
 
-    result_list = sample_images(model, vae)
+    result_list = sample_images(model, vae, args)
 
     save_dir = args.ckpt.parent.parent
 
@@ -120,18 +140,3 @@ def main(args: argparse.Namespace) -> None:
         pred, gt, action = data_taple
         save_image(pred, save_dir / f"pred{i:08d}.png", nrow=4, normalize=True, value_range=(-1, 1))
         save_image(gt, save_dir / f"gt{i:08d}.png", nrow=4, normalize=True, value_range=(-1, 1))
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
-    parser.add_argument("--data-path", type=Path, required=True)
-    parser.add_argument("--global-batch-size", type=int, default=8)
-    parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--num-classes", type=int, default=1000)
-    parser.add_argument("--cfg-scale", type=float, default=4.0)
-    parser.add_argument("--num-sampling-steps", type=int, default=250)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--ckpt", type=Path, required=True)
-    args = parser.parse_args()
-    main(args)
