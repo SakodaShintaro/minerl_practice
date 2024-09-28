@@ -21,5 +21,6 @@ python3 train.py \
 ckpt_id=$(ls ${result_dir}/checkpoints | sort | tail -n 1)
 
 python3 sample.py \
+  --model=${MODEL_NAME} \
   --data_path=${DATA_PATH} \
   --ckpt=${result_dir}/checkpoints/${ckpt_id}
