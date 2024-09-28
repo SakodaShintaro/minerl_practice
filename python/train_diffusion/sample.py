@@ -133,7 +133,7 @@ if __name__ == "__main__":
 
     save_dir = args.ckpt.parent.parent
 
-    for i, data_taple in enumerate(result_list):
-        pred, gt, action = data_taple
+    for i, data_tuple in enumerate(result_list):
+        pred, gt, action = data_tuple
         save_image(pred, save_dir / f"pred{i:08d}.png", nrow=4, normalize=True, value_range=(-1, 1))
         save_image(gt, save_dir / f"gt{i:08d}.png", nrow=4, normalize=True, value_range=(-1, 1))
