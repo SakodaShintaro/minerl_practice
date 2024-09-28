@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 
 import torch
+from constant import IMAGE_SIZE
 from diffusers.models import AutoencoderKL
 from diffusion import create_diffusion
 from minerl_dataset import MineRLDataset
@@ -23,10 +24,9 @@ torch.backends.cudnn.allow_tf32 = True
 
 
 def sample_images(model: torch.nn.Module, vae: AutoencoderKL) -> torch.Tensor:
-    image_size = 256
     transform = transforms.Compose(
         [
-            transforms.Resize((image_size, image_size)),
+            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
         ],
@@ -42,7 +42,7 @@ def sample_images(model: torch.nn.Module, vae: AutoencoderKL) -> torch.Tensor:
     )
 
     device = model.parameters().__next__().device
-    latent_size = image_size // 8
+    latent_size = IMAGE_SIZE // 8
 
     results = []
 
@@ -128,7 +128,6 @@ if __name__ == "__main__":
     parser.add_argument("--data-path", type=Path, required=True)
     parser.add_argument("--global-batch-size", type=int, default=8)
     parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--image-size", type=int, default=256)
     parser.add_argument("--num-classes", type=int, default=1000)
     parser.add_argument("--cfg-scale", type=float, default=4.0)
     parser.add_argument("--num-sampling-steps", type=int, default=250)

@@ -15,6 +15,7 @@ from time import time
 
 import numpy as np
 import torch
+from constant import IMAGE_SIZE
 from diffusers.models import AutoencoderKL
 from diffusion import create_diffusion
 from minerl_dataset import MineRLDataset
@@ -105,7 +106,7 @@ def main(args: argparse.Namespace) -> None:  # noqa: PLR0915
     logger.info(f"Experiment directory created at {results_dir}")
 
     # Create model:
-    assert args.image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
+    assert IMAGE_SIZE % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
     model = DiT_models[args.model](input_size=(32, 32))
     # Note that parameter initialization is done within the DiT constructor
     ema = deepcopy(model).to(device)  # Create an EMA of the model for use after training
@@ -123,7 +124,7 @@ def main(args: argparse.Namespace) -> None:  # noqa: PLR0915
     # Setup data
     transform = transforms.Compose(
         [
-            transforms.Resize((256, 256)),
+            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
         ],
@@ -249,7 +250,6 @@ def main(args: argparse.Namespace) -> None:  # noqa: PLR0915
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
-    parser.add_argument("--image-size", type=int, default=128)
     parser.add_argument("--data-path", type=Path, required=True)
     parser.add_argument("--results-dir", type=Path, default="results")
     parser.add_argument("--epochs", type=int, default=1400)
