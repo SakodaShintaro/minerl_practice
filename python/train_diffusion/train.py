@@ -45,6 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--log_every", type=int, default=100)
     parser.add_argument("--ckpt_every", type=int, default=50_000)
+    parser.add_argument("--ckpt", type=Path, default=None)
     return parser.parse_args()
 
 
@@ -123,9 +124,14 @@ if __name__ == "__main__":
     # Create model:
     assert IMAGE_SIZE % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
     latent_size = IMAGE_SIZE // 8
+    ckpt = torch.load(args.ckpt) if args.ckpt is not None else None
     model = DiT_models[args.model](input_size=(latent_size, latent_size))
+    if ckpt is not None:
+        model.load_state_dict(ckpt["model"])
     # Note that parameter initialization is done within the DiT constructor
     ema = deepcopy(model).to(device)  # Create an EMA of the model for use after training
+    if ckpt is not None:
+        ema.load_state_dict(ckpt["ema"])
     requires_grad(ema, flag=False)
     model = model.to(device)
     diffusion = create_diffusion(
@@ -136,6 +142,8 @@ if __name__ == "__main__":
 
     # Setup optimizer
     opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0)
+    if ckpt is not None:
+        opt.load_state_dict(ckpt["opt"])
 
     # Setup data
     transform = transforms.Compose(
