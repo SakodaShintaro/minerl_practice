@@ -258,7 +258,7 @@ if __name__ == "__main__":
     logger.info(f"Saved checkpoint to {checkpoint_path}")
 
     model.eval()
-    samples = sample_images(model, vae)
+    samples = sample_images(model, vae, args)
     pred, gt, action = samples[0]
     save_image(
         pred,
