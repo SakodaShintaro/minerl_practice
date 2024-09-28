@@ -119,7 +119,7 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Load model:
-    latent_size = args.image_size // 8
+    latent_size = IMAGE_SIZE // 8
     num_classes = args.num_classes
     model = DiT_models[args.model](input_size=latent_size, num_classes=num_classes).to(device)
     # Auto-download a pre-trained model or load a custom DiT checkpoint from train.py:
@@ -131,9 +131,10 @@ if __name__ == "__main__":
 
     result_list = sample_images(model, vae, args)
 
-    save_dir = args.ckpt.parent.parent
+    save_dir = args.ckpt.parent.parent / "samples"
+    save_dir.mkdir(exist_ok=True, parents=True)
 
     for i, data_tuple in enumerate(result_list):
         pred, gt, action = data_tuple
-        save_image(pred, save_dir / f"pred{i:08d}.png", nrow=4, normalize=True, value_range=(-1, 1))
-        save_image(gt, save_dir / f"gt{i:08d}.png", nrow=4, normalize=True, value_range=(-1, 1))
+        save_image(pred, save_dir / f"{i:08d}_pred.png", nrow=4, normalize=True, value_range=(-1, 1))
+        save_image(gt, save_dir / f"{i:08d}_gt.png", nrow=4, normalize=True, value_range=(-1, 1))
