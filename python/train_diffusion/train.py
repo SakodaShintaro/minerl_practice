@@ -229,9 +229,17 @@ if __name__ == "__main__":
                 logger.info(f"Saved checkpoint to {checkpoint_path}")
                 model.eval()
                 samples = sample_images(model, vae, args)
+                pred, gt, action = samples[0]
                 save_image(
-                    samples,
-                    results_dir / f"sample_{train_steps:07d}.png",
+                    pred,
+                    results_dir / f"{train_steps:08d}_pred.png",
+                    nrow=4,
+                    normalize=True,
+                    value_range=(-1, 1),
+                )
+                save_image(
+                    gt,
+                    results_dir / f"{train_steps:08d}_gt.png",
                     nrow=4,
                     normalize=True,
                     value_range=(-1, 1),
@@ -251,9 +259,17 @@ if __name__ == "__main__":
 
     model.eval()
     samples = sample_images(model, vae)
+    pred, gt, action = samples[0]
     save_image(
-        samples,
-        results_dir / "sample_last.png",
+        pred,
+        results_dir / "last_pred.png",
+        nrow=4,
+        normalize=True,
+        value_range=(-1, 1),
+    )
+    save_image(
+        gt,
+        results_dir / "last_gt.png",
         nrow=4,
         normalize=True,
         value_range=(-1, 1),

@@ -42,75 +42,72 @@ def sample_images(
     vae: AutoencoderKL,
     args: argparse.Namespace,
 ) -> torch.Tensor:
-    transform = transforms.Compose(
-        [
-            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
-        ],
-    )
-    dataset = MineRLDataset(args.data_path, transform=transform)
-    loader = DataLoader(
-        dataset,
-        batch_size=int(args.global_batch_size),
-        shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=True,
-        drop_last=True,
-    )
+    with torch.no_grad():
+        transform = transforms.Compose(
+            [
+                transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
+            ],
+        )
+        dataset = MineRLDataset(args.data_path, transform=transform)
+        loader = DataLoader(
+            dataset,
+            batch_size=int(args.global_batch_size),
+            shuffle=False,
+            num_workers=args.num_workers,
+            pin_memory=True,
+            drop_last=True,
+        )
 
-    device = model.parameters().__next__().device
-    latent_size = IMAGE_SIZE // 8
+        device = model.parameters().__next__().device
+        latent_size = IMAGE_SIZE // 8
 
-    results = []
+        results = []
 
-    for batch in loader:
-        image, action = batch
-        image = image.to(device)  # [b, seq, c, h, w]
-        gt_image = image[:, -1]
-        action = action.to(device)  # [b, seq, action_dim]
-        b, seq, c, h, w = image.shape
-        hidden_h = h // 8
-        hidden_w = w // 8
-        with torch.no_grad():
+        for batch in loader:
+            image, action = batch
+            image = image.to(device)  # [b, seq, c, h, w]
+            gt_image = image[:, -1]
+            action = action.to(device)  # [b, seq, action_dim]
+            b, seq, c, h, w = image.shape
+            hidden_h = h // 8
+            hidden_w = w // 8
             # Map input images to latent space + normalize latents:
             image = image.view(b * seq, c, h, w)
             image = vae.encode(image).latent_dist.sample().mul_(0.18215)
             image = image.view(b, seq, 4, hidden_h, hidden_w)
 
-        cond_image = image[:, :-1]
+            cond_image = image[:, :-1]
 
-        diffusion = create_diffusion(str(250))
+            diffusion = create_diffusion(str(250))
 
-        # Create sampling noise:
-        z = torch.randn(b, 1, 4, latent_size, latent_size, device=device)
+            # Create sampling noise:
+            z = torch.randn(b, 1, 4, latent_size, latent_size, device=device)
 
-        # Setup classifier-free guidance:
-        z = torch.cat([z, z], 0)
-        cond_image = torch.cat([cond_image, cond_image], 0)
-        cond_action = torch.cat([action, action], 0)
-        model_kwargs = {"cond_image": cond_image, "cond_action": cond_action, "cfg_scale": 0.0}
+            # Setup classifier-free guidance:
+            z = torch.cat([z, z], 0)
+            cond_image = torch.cat([cond_image, cond_image], 0)
+            cond_action = torch.cat([action, action], 0)
+            model_kwargs = {"cond_image": cond_image, "cond_action": cond_action, "cfg_scale": 0.0}
 
-        # Sample images:
-        samples = diffusion.p_sample_loop(
-            model.forward_with_cfg,
-            z.shape,
-            z,
-            clip_denoised=False,
-            model_kwargs=model_kwargs,
-            progress=True,
-            device=device,
-        )
-        print(f"{samples.shape=}")
-        samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
-        print(f"{samples.shape=}")
-        samples = samples[:, 0]
-        print(f"{samples.shape=}")
-        pred_image = vae.decode(samples / 0.18215).sample
-        results.append((pred_image, gt_image, action))
-        break
+            # Sample images:
+            samples = diffusion.p_sample_loop(
+                model.forward_with_cfg,
+                z.shape,
+                z,
+                clip_denoised=False,
+                model_kwargs=model_kwargs,
+                progress=True,
+                device=device,
+            )
+            samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
+            samples = samples[:, 0]
+            pred_image = vae.decode(samples / 0.18215).sample
+            results.append((pred_image, gt_image, action))
+            break
 
-    return results
+        return results
 
 
 if __name__ == "__main__":
