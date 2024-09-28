@@ -10,7 +10,7 @@ import argparse
 from pathlib import Path
 
 import torch
-from common import IMAGE_SIZE
+from constant import IMAGE_SIZE
 from diffusers.models import AutoencoderKL
 from diffusion import create_diffusion
 from minerl_dataset import MineRLDataset
