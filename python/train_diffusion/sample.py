@@ -49,6 +49,7 @@ def sample_images(model: torch.nn.Module, vae: AutoencoderKL) -> torch.Tensor:
     for batch in loader:
         image, action = batch
         image = image.to(device)  # [b, seq, c, h, w]
+        gt_image = image[:, -1]
         action = action.to(device)  # [b, seq, action_dim]
         b, seq, c, h, w = image.shape
         hidden_h = h // 8
@@ -60,7 +61,6 @@ def sample_images(model: torch.nn.Module, vae: AutoencoderKL) -> torch.Tensor:
             image = image.view(b, seq, 4, hidden_h, hidden_w)
 
         cond_image = image[:, :-1]
-        pred_image = image[:, -1:]
 
         diffusion = create_diffusion(str(250))
 
@@ -70,8 +70,8 @@ def sample_images(model: torch.nn.Module, vae: AutoencoderKL) -> torch.Tensor:
         # Setup classifier-free guidance:
         z = torch.cat([z, z], 0)
         cond_image = torch.cat([cond_image, cond_image], 0)
-        action = torch.cat([action, action], 0)
-        model_kwargs = {"cond_image": cond_image, "cond_action": action, "cfg_scale": 0.0}
+        cond_action = torch.cat([action, action], 0)
+        model_kwargs = {"cond_image": cond_image, "cond_action": cond_action, "cfg_scale": 0.0}
 
         # Sample images:
         samples = diffusion.p_sample_loop(
@@ -88,9 +88,9 @@ def sample_images(model: torch.nn.Module, vae: AutoencoderKL) -> torch.Tensor:
         print(f"{samples.shape=}")
         samples = samples[:, 0]
         print(f"{samples.shape=}")
-        result = vae.decode(samples / 0.18215).sample
-        results.append(result)
-        return result
+        pred_image = vae.decode(samples / 0.18215).sample
+        results.append((pred_image, gt_image, action))
+        break
 
     return results
 
@@ -112,11 +112,14 @@ def main(args: argparse.Namespace) -> None:
     model.eval()  # important!
     vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
 
-    samples = sample_images(model, vae)
+    result_list = sample_images(model, vae)
 
-    # Save and display images:
     save_dir = args.ckpt.parent.parent
-    save_image(samples, save_dir / "sample.png", nrow=4, normalize=True, value_range=(-1, 1))
+
+    for i, data_taple in enumerate(result_list):
+        pred, gt, action = data_taple
+        save_image(pred, save_dir / f"pred{i:08d}.png", nrow=4, normalize=True, value_range=(-1, 1))
+        save_image(gt, save_dir / f"gt{i:08d}.png", nrow=4, normalize=True, value_range=(-1, 1))
 
 
 if __name__ == "__main__":
