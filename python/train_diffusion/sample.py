@@ -29,8 +29,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data_path", type=Path, required=True)
     parser.add_argument("--global_batch_size", type=int, default=8)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--cfg_scale", type=float, default=0.0)
-    parser.add_argument("--num_sampling_steps", type=int, default=250)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--ckpt", type=Path, required=True)
     return parser.parse_args()
@@ -79,7 +77,7 @@ def sample_images(
 
             cond_image = image[:, :-1]
 
-            diffusion = create_diffusion(str(args.num_sampling_steps))
+            diffusion = create_diffusion(str(250))
 
             # Create sampling noise:
             z = torch.randn(b, 1, 4, latent_size, latent_size, device=device)
@@ -91,7 +89,7 @@ def sample_images(
             model_kwargs = {
                 "cond_image": cond_image,
                 "cond_action": cond_action,
-                "cfg_scale": args.cfg_scale,
+                "cfg_scale": 0.0,
             }
 
             # Sample images:
