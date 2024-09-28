@@ -218,7 +218,7 @@ if __name__ == "__main__":
                 start_time = time()
 
             # Save DiT checkpoint:
-            if train_steps % args.ckpt_every == 0 and train_steps > 0:
+            if train_steps % args.ckpt_every == 0 or train_steps == 1:
                 checkpoint = {
                     "model": model.state_dict(),
                     "ema": ema.state_dict(),
