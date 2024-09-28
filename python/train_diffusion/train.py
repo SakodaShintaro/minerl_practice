@@ -122,7 +122,8 @@ if __name__ == "__main__":
 
     # Create model:
     assert IMAGE_SIZE % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
-    model = DiT_models[args.model](input_size=(32, 32))
+    latent_size = IMAGE_SIZE // 8
+    model = DiT_models[args.model](input_size=(latent_size, latent_size))
     # Note that parameter initialization is done within the DiT constructor
     ema = deepcopy(model).to(device)  # Create an EMA of the model for use after training
     requires_grad(ema, flag=False)

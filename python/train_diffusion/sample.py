@@ -29,8 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-path", type=Path, required=True)
     parser.add_argument("--global-batch-size", type=int, default=8)
     parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--num-classes", type=int, default=1000)
-    parser.add_argument("--cfg-scale", type=float, default=4.0)
+    parser.add_argument("--cfg_scale", type=float, default=0.0)
     parser.add_argument("--num-sampling-steps", type=int, default=250)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--ckpt", type=Path, required=True)
@@ -89,7 +88,11 @@ def sample_images(
             z = torch.cat([z, z], 0)
             cond_image = torch.cat([cond_image, cond_image], 0)
             cond_action = torch.cat([action, action], 0)
-            model_kwargs = {"cond_image": cond_image, "cond_action": cond_action, "cfg_scale": 0.0}
+            model_kwargs = {
+                "cond_image": cond_image,
+                "cond_action": cond_action,
+                "cfg_scale": args.cfg_scale,
+            }
 
             # Sample images:
             samples = diffusion.p_sample_loop(
@@ -120,8 +123,7 @@ if __name__ == "__main__":
 
     # Load model:
     latent_size = IMAGE_SIZE // 8
-    num_classes = args.num_classes
-    model = DiT_models[args.model](input_size=latent_size, num_classes=num_classes).to(device)
+    model = DiT_models[args.model](input_size=latent_size).to(device)
     # Auto-download a pre-trained model or load a custom DiT checkpoint from train.py:
     state_dict = torch.load(str(args.ckpt))
     state_dict = state_dict["model"]
