@@ -26,11 +26,11 @@ torch.backends.cudnn.allow_tf32 = True
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
-    parser.add_argument("--data-path", type=Path, required=True)
-    parser.add_argument("--global-batch-size", type=int, default=8)
-    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--data_path", type=Path, required=True)
+    parser.add_argument("--global_batch_size", type=int, default=8)
+    parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--cfg_scale", type=float, default=0.0)
-    parser.add_argument("--num-sampling-steps", type=int, default=250)
+    parser.add_argument("--num_sampling_steps", type=int, default=250)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--ckpt", type=Path, required=True)
     return parser.parse_args()
@@ -79,7 +79,7 @@ def sample_images(
 
             cond_image = image[:, :-1]
 
-            diffusion = create_diffusion(str(250))
+            diffusion = create_diffusion(str(args.num_sampling_steps))
 
             # Create sampling noise:
             z = torch.randn(b, 1, 4, latent_size, latent_size, device=device)

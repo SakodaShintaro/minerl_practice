@@ -11,15 +11,15 @@ DATA_PATH="../../data"
 
 python3 train.py \
   --model=${MODEL_NAME} \
-  --data-path=${DATA_PATH} \
-  --results-dir=${result_dir} \
+  --data_path=${DATA_PATH} \
+  --results_dir=${result_dir} \
   --epochs=10 \
-  --global-batch-size=16 \
-  --ckpt-every=3000
+  --global_batch_size=16 \
+  --ckpt_every=3000
 
 # checkpointディレクトリの中から最新のものを指定
 ckpt_id=$(ls ${result_dir}/checkpoints | sort | tail -n 1)
 
 python3 sample.py \
-  --data-path=${DATA_PATH} \
+  --data_path=${DATA_PATH} \
   --ckpt=${result_dir}/checkpoints/${ckpt_id}

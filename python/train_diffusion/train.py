@@ -38,13 +38,13 @@ torch.backends.cudnn.allow_tf32 = True
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
-    parser.add_argument("--data-path", type=Path, required=True)
-    parser.add_argument("--results-dir", type=Path, default="results")
+    parser.add_argument("--data_path", type=Path, required=True)
+    parser.add_argument("--results_dir", type=Path, default="results")
     parser.add_argument("--epochs", type=int, default=1400)
-    parser.add_argument("--global-batch-size", type=int, default=8)
-    parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--log-every", type=int, default=100)
-    parser.add_argument("--ckpt-every", type=int, default=50_000)
+    parser.add_argument("--global_batch_size", type=int, default=8)
+    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--log_every", type=int, default=100)
+    parser.add_argument("--ckpt_every", type=int, default=50_000)
     return parser.parse_args()
 
 
