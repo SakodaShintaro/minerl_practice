@@ -10,7 +10,7 @@ import argparse
 from pathlib import Path
 
 import torch
-from constant import IMAGE_SIZE
+from common import IMAGE_SIZE
 from diffusers.models import AutoencoderKL
 from diffusion import create_diffusion
 from minerl_dataset import MineRLDataset
@@ -136,5 +136,17 @@ if __name__ == "__main__":
 
     for i, data_tuple in enumerate(result_list):
         pred, gt, action = data_tuple
-        save_image(pred, save_dir / f"{i:08d}_pred.png", nrow=4, normalize=True, value_range=(-1, 1))
-        save_image(gt, save_dir / f"{i:08d}_gt.png", nrow=4, normalize=True, value_range=(-1, 1))
+        save_image(
+            pred,
+            save_dir / f"{i:08d}_pred.png",
+            nrow=4,
+            normalize=True,
+            value_range=(-1, 1),
+        )
+        save_image(
+            gt,
+            save_dir / f"{i:08d}_gt.png",
+            nrow=4,
+            normalize=True,
+            value_range=(-1, 1),
+        )
