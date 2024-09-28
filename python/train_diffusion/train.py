@@ -35,6 +35,19 @@ torch.backends.cudnn.allow_tf32 = True
 #################################################################################
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
+    parser.add_argument("--data-path", type=Path, required=True)
+    parser.add_argument("--results-dir", type=Path, default="results")
+    parser.add_argument("--epochs", type=int, default=1400)
+    parser.add_argument("--global-batch-size", type=int, default=8)
+    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--log-every", type=int, default=100)
+    parser.add_argument("--ckpt-every", type=int, default=50_000)
+    return parser.parse_args()
+
+
 @torch.no_grad()
 def update_ema(ema_model: torch.nn.Module, model: torch.nn.Module, decay: float = 0.9999) -> None:
     """Step the EMA model towards the current model."""
@@ -87,9 +100,11 @@ def center_crop_arr(pil_image: Image, image_size: int) -> Image:
 #################################################################################
 
 
-def main(args: argparse.Namespace) -> None:  # noqa: PLR0915
+if __name__ == "__main__":
     """Trains a new DiT model."""
     assert torch.cuda.is_available(), "Training currently requires at least one GPU."
+
+    args = parse_args()
 
     device = 0
     seed = 0
@@ -245,17 +260,3 @@ def main(args: argparse.Namespace) -> None:  # noqa: PLR0915
     )
 
     logger.info("Done!")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
-    parser.add_argument("--data-path", type=Path, required=True)
-    parser.add_argument("--results-dir", type=Path, default="results")
-    parser.add_argument("--epochs", type=int, default=1400)
-    parser.add_argument("--global-batch-size", type=int, default=8)
-    parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--log-every", type=int, default=100)
-    parser.add_argument("--ckpt-every", type=int, default=50_000)
-    args = parser.parse_args()
-    main(args)
