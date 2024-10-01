@@ -23,7 +23,6 @@ from models import DiT_models
 from PIL import Image
 from sample import sample_images
 from torch.utils.data import DataLoader
-from torchvision import transforms
 from torchvision.utils import save_image
 
 # the first flag below was False when we tested this script but True makes training a lot faster:
@@ -146,14 +145,7 @@ if __name__ == "__main__":
         opt.load_state_dict(ckpt["opt"])
 
     # Setup data
-    transform = transforms.Compose(
-        [
-            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
-        ],
-    )
-    dataset = MineRLDataset(args.data_path, transform=transform)
+    dataset = MineRLDataset(args.data_path, image_size=IMAGE_SIZE)
     loader = DataLoader(
         dataset,
         batch_size=int(args.global_batch_size),

@@ -16,7 +16,6 @@ from diffusion import create_diffusion
 from minerl_dataset import MineRLDataset
 from models import DiT_models
 from torch.utils.data import DataLoader
-from torchvision import transforms
 from torchvision.utils import save_image
 
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -40,14 +39,7 @@ def sample_images(
     args: argparse.Namespace,
 ) -> torch.Tensor:
     with torch.no_grad():
-        transform = transforms.Compose(
-            [
-                transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
-            ],
-        )
-        dataset = MineRLDataset(args.data_path, transform=transform)
+        dataset = MineRLDataset(args.data_path, image_size=IMAGE_SIZE)
         loader = DataLoader(
             dataset,
             batch_size=int(args.global_batch_size),

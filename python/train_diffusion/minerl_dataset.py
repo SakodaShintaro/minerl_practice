@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import torch
 from PIL import Image
+from torchvision import transforms
 from torchvision.datasets import VisionDataset
 
 if TYPE_CHECKING:
@@ -19,13 +20,19 @@ class MineRLDataset(VisionDataset):
     def __init__(
         self,
         root: Path,
-        transform: Callable | None = None,
-        target_transform: Callable | None = None,
+        image_size: int,
     ) -> None:
+        transform = transforms.Compose(
+            [
+                transforms.Resize((image_size, image_size)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
+            ],
+        )
         super().__init__(
             root,
             transform=transform,
-            target_transform=target_transform,
+            target_transform=None,
         )
         self.trial_list = sorted(root.glob("*"))
         self.data_list = []
