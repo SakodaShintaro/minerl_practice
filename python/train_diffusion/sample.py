@@ -10,7 +10,6 @@ import argparse
 from pathlib import Path
 
 import torch
-from constant import IMAGE_SIZE
 from diffusers.models import AutoencoderKL
 from diffusion import create_diffusion
 from minerl_dataset import MineRLDataset
@@ -38,8 +37,9 @@ def sample_images(
     vae: AutoencoderKL,
     args: argparse.Namespace,
 ) -> torch.Tensor:
+    image_size = args.image_size
     with torch.no_grad():
-        dataset = MineRLDataset(args.data_path, image_size=IMAGE_SIZE)
+        dataset = MineRLDataset(args.data_path, image_size)
         loader = DataLoader(
             dataset,
             batch_size=int(args.global_batch_size),
@@ -50,7 +50,7 @@ def sample_images(
         )
 
         device = model.parameters().__next__().device
-        latent_size = IMAGE_SIZE // 8
+        latent_size = image_size // 8
 
         results = []
 
@@ -112,12 +112,13 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Load model:
-    latent_size = IMAGE_SIZE // 8
+    state_dict = torch.load(str(args.ckpt))
+    train_args = state_dict["args"]
+    args.image_size = train_args.image_size
+    latent_size = train_args.image_size // 8
     model = DiT_models[args.model](input_size=latent_size).to(device)
     # Auto-download a pre-trained model or load a custom DiT checkpoint from train.py:
-    state_dict = torch.load(str(args.ckpt))
-    state_dict = state_dict["model"]
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict["model"])
     model.eval()  # important!
     vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
 

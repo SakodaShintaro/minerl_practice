@@ -15,7 +15,6 @@ from time import time
 
 import numpy as np
 import torch
-from constant import IMAGE_SIZE
 from diffusers.models import AutoencoderKL
 from diffusion import create_diffusion
 from minerl_dataset import MineRLDataset
@@ -45,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log_every", type=int, default=100)
     parser.add_argument("--ckpt_every", type=int, default=5_000)
     parser.add_argument("--ckpt", type=Path, default=None)
+    parser.add_argument("--image_size", type=int, default=128)
     return parser.parse_args()
 
 
@@ -121,8 +121,9 @@ if __name__ == "__main__":
     logger.info(f"Experiment directory created at {results_dir}")
 
     # Create model:
-    assert IMAGE_SIZE % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
-    latent_size = IMAGE_SIZE // 8
+    image_size = args.image_size
+    assert image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
+    latent_size = image_size // 8
     ckpt = torch.load(args.ckpt) if args.ckpt is not None else None
     model = DiT_models[args.model](input_size=(latent_size, latent_size))
     if ckpt is not None:
@@ -145,7 +146,7 @@ if __name__ == "__main__":
         opt.load_state_dict(ckpt["opt"])
 
     # Setup data
-    dataset = MineRLDataset(args.data_path, image_size=IMAGE_SIZE)
+    dataset = MineRLDataset(args.data_path, image_size=image_size)
     loader = DataLoader(
         dataset,
         batch_size=int(args.global_batch_size),
