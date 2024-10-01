@@ -13,9 +13,9 @@ python3 train.py \
   --model=${MODEL_NAME} \
   --data_path=${DATA_PATH} \
   --results_dir=${result_dir} \
-  --epochs=10 \
   --global_batch_size=16 \
-  --ckpt_every=3000
+  --steps=50000 \
+  --ckpt_every=5000
 
 # checkpointディレクトリの中から最新のものを指定
 ckpt_id=$(ls ${result_dir}/checkpoints | sort | tail -n 1)
