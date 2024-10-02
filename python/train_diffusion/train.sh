@@ -13,7 +13,8 @@ python3 train.py \
   --model=${MODEL_NAME} \
   --data_path=${DATA_PATH} \
   --results_dir=${result_dir} \
-  --global_batch_size=16 \
+  --global_batch_size=64 \
+  --image_size=128 \
   --steps=50000 \
   --ckpt_every=5000
 
