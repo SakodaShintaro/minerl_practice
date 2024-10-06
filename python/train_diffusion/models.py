@@ -252,7 +252,7 @@ class DiT(nn.Module):
         x: (N, T_in, C, H, W) tensor of spatial inputs (latent representations of images)
         t: (N,) tensor of diffusion timesteps
         cond_image: (N, T_cond, C, H, W) tensor of spatial inputs (latent representations of images)
-        cond_action: (N, T_in + T_cond, D) tensor of class labels
+        cond_action: (N, T_cond, D) tensor of class labels
         """
         N, T_in, C, H, W = x.shape
         T_cond = cond_image.shape[1]
@@ -263,8 +263,8 @@ class DiT(nn.Module):
         L, D = image.shape[1:3]
         image = image.reshape(N, T_sum * L, D)  # (N, T_sum * L, D)
         t = self.t_embedder(t)  # (N, D)
-        action = self.action_embedder(cond_action)  # (N, T_sum, D)
-        x = torch.cat([image, action], dim=1)  # (N, T_sum * (L + 1), D)
+        action = self.action_embedder(cond_action)  # (N, T_cond, D)
+        x = torch.cat([image, action], dim=1)  # (N, T_cond * (L + 1), D)
         c = t  # (N, D)
         for block in self.blocks:
             x = block(x, c)  # (N, T_sum * (L + 1), D)

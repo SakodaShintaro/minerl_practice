@@ -189,8 +189,9 @@ if __name__ == "__main__":
 
             cond_image = image[:, :-1]
             pred_image = image[:, -1:]
+            cond_action = action[:, :-1]
 
-            model_kwargs = {"cond_image": cond_image, "cond_action": action}
+            model_kwargs = {"cond_image": cond_image, "cond_action": cond_action}
             loss_dict = diffusion.training_losses(model, pred_image, t, model_kwargs)
             loss = loss_dict["loss"].mean()
             opt.zero_grad()
