@@ -224,7 +224,7 @@ if __name__ == "__main__":
     )
     logger.info(f"Dataset contains {len(train_dataset)=:,} images ({args.data_path})")
 
-    valid_dataset = MineRLDataset(args.data_path, image_size)
+    valid_dataset = MineRLDataset(args.data_path, image_size=image_size)
     valid_loader = DataLoader(
         valid_dataset,
         batch_size=int(args.batch_size),
