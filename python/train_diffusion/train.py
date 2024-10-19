@@ -37,10 +37,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--ckpt_every", type=int, default=500)
     parser.add_argument("--ckpt", type=Path, default=None)
+    parser.add_argument("--cfg_scale", type=float, default=1.0)
     parser.add_argument("--data_path", type=Path, required=True)
     parser.add_argument("--image_size", type=int, default=32)
     parser.add_argument("--log_every", type=int, default=100)
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
+    parser.add_argument("--nfe", type=int, default=100, help="Number of Function Evaluations")
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--results_dir", type=Path, default="results")
     parser.add_argument("--steps", type=int, default=5_000)
@@ -149,7 +151,10 @@ if __name__ == "__main__":
     assert image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
     latent_size = image_size // 8
     ckpt = torch.load(args.ckpt) if args.ckpt is not None else None
-    model = DiT_models[args.model](input_size=(latent_size, latent_size))
+    model = DiT_models[args.model](
+        input_size=(latent_size, latent_size),
+        learn_sigma=not args.use_flow_matching,
+    )
     if ckpt is not None:
         model.load_state_dict(ckpt["model"])
     # Note that parameter initialization is done within the DiT constructor
@@ -181,7 +186,7 @@ if __name__ == "__main__":
     )
     logger.info(f"Dataset contains {len(train_dataset):,} images ({args.data_path})")
 
-    valid_dataset = MineRLDataset(args.data_path, image_size=image_size)
+    valid_dataset = deepcopy(train_dataset)
     valid_loader = DataLoader(
         train_dataset,
         batch_size=int(args.batch_size),
