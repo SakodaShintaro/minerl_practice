@@ -26,11 +26,10 @@ if __name__ == "__main__":
                 continue
             # [2024-09-23 12:13:55] (step=0047800) Train Loss: 0.1560, Train Steps/Sec: 1.86
             elements = line.split(" ")
-            step = int(elements[2].replace("(step=", "").replace(")", ""))
-            loss = float(elements[5].replace(",", ""))
+            step = int(elements[3].replace("(step=", "").replace(")", ""))
+            loss = float(elements[6].replace(",", ""))
             step_list.append(step)
             loss_list.append(loss)
-
 
     plt.plot(step_list, loss_list)
     plt.xlabel("Step")
