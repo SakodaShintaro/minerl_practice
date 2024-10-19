@@ -89,6 +89,7 @@ def sample_images(
             image = image.view(b, seq, 4, hidden_h, hidden_w)
 
             cond_image = image[:, :-1]
+            cond_action = action[:, :-1]
 
             # Create sampling noise:
             z = torch.randn(b, 1, 4, latent_size, latent_size, device=device)
@@ -96,7 +97,7 @@ def sample_images(
             # Setup classifier-free guidance:
             z = torch.cat([z, z], 0)
             cond_image = torch.cat([cond_image, cond_image], 0)
-            cond_action = torch.cat([action, action], 0)
+            cond_action = torch.cat([cond_action, cond_action], 0)
 
             dt = 1.0 / sample_n
             for i in range(sample_n):
