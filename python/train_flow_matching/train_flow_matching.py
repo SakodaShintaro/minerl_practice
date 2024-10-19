@@ -66,22 +66,13 @@ def requires_grad(model: torch.nn.Module, flag: bool) -> None:  # noqa: FBT001
 
 
 def sample_images(
+    loader: DataLoader,
     model: torch.nn.Module,
     vae: AutoencoderKL,
     args: argparse.Namespace,
 ) -> torch.Tensor:
     image_size = args.image_size
     with torch.no_grad():
-        dataset = MineRLDataset(args.data_path, image_size)
-        loader = DataLoader(
-            dataset,
-            batch_size=int(args.batch_size),
-            shuffle=False,
-            num_workers=args.num_workers,
-            pin_memory=True,
-            drop_last=True,
-        )
-
         device = model.parameters().__next__().device
         latent_size = image_size // 8
 
@@ -121,7 +112,8 @@ def sample_images(
         return results
 
 
-def save_ckpt(
+def save_ckpt(  # noqa: PLR0913
+    loader: DataLoader,
     model: torch.nn.Module,
     ema: torch.nn.Module,
     opt: torch.optim.Optimizer,
@@ -140,7 +132,7 @@ def save_ckpt(
     }
     torch.save(checkpoint, checkpoint_path)
     model.eval()
-    samples = sample_images(model, vae, args)
+    samples = sample_images(loader, model, vae, args)
     sample_dir = results_dir / "samples"
     sample_dir.mkdir(parents=True, exist_ok=True)
     pred, gt, action = samples[0]
@@ -216,17 +208,26 @@ if __name__ == "__main__":
         opt.load_state_dict(ckpt["opt"])
 
     # Setup data:
-    dataset = MineRLDataset(args.data_path, image_size=image_size)
-
-    loader = DataLoader(
-        dataset,
+    train_dataset = MineRLDataset(args.data_path, image_size=image_size)
+    train_loader = DataLoader(
+        train_dataset,
         batch_size=int(args.batch_size),
         shuffle=False,
         num_workers=args.num_workers,
         pin_memory=True,
         drop_last=True,
     )
-    logger.info(f"Dataset contains {len(dataset):,} images ({args.data_path})")
+    logger.info(f"Dataset contains {len(train_dataset)=:,} images ({args.data_path})")
+
+    valid_dataset = MineRLDataset(args.data_path, image_size)
+    valid_loader = DataLoader(
+        valid_dataset,
+        batch_size=int(args.batch_size),
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=True,
+        drop_last=True,
+    )
 
     # Prepare models for training:
     update_ema(ema, model, decay=0)  # Ensure EMA is initialized with synced weights
@@ -241,12 +242,12 @@ if __name__ == "__main__":
 
     eps = 0.001
 
-    save_ckpt(model, ema, opt, args, train_steps)
+    save_ckpt(valid_loader, model, ema, opt, args, train_steps)
 
     logger.info(f"Training for {args.steps} steps...")
     for epoch in range(100000):
         logger.info(f"Beginning epoch {epoch}...")
-        for image, action in loader:
+        for image, action in train_loader:
             image = image.to(device)
             action = action.to(device)
             b, seq, c, h, w = image.shape
@@ -299,7 +300,7 @@ if __name__ == "__main__":
 
             # Save DiT checkpoint:
             if train_steps % args.ckpt_every == 0:
-                save_ckpt(model, ema, opt, args, train_steps)
+                save_ckpt(valid_loader, model, ema, opt, args, train_steps)
                 model.train()
 
             if train_steps >= args.steps:
@@ -309,5 +310,5 @@ if __name__ == "__main__":
             break
 
     # Save final checkpoint:
-    save_ckpt(model, ema, opt, args, train_steps)
+    save_ckpt(valid_loader, model, ema, opt, args, train_steps)
     logger.info("Done!")
