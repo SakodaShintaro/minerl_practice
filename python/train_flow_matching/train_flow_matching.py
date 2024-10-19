@@ -39,9 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--steps", type=int, default=5_000)
-    parser.add_argument("--log_every", type=int, default=100)
-    parser.add_argument("--ckpt_every", type=int, default=500)
+    parser.add_argument("--steps", type=int, default=50_000)
     parser.add_argument("--ckpt", type=Path, default=None)
     parser.add_argument("--dataset", type=str, choices=["mnist", "cifar10", "stl10"])
     parser.add_argument("--cfg_scale", type=float, default=0.0)
@@ -72,6 +70,7 @@ def sample_images(
     args: argparse.Namespace,
 ) -> torch.Tensor:
     image_size = args.image_size
+    sample_n = 100
     with torch.no_grad():
         device = model.parameters().__next__().device
         latent_size = image_size // 8
@@ -101,10 +100,16 @@ def sample_images(
             cond_image = torch.cat([cond_image, cond_image], 0)
             cond_action = torch.cat([action, action], 0)
 
-            t = torch.zeros(cond_image.shape[0], device=device)
+            dt = 1.0 / sample_n
+            for i in range(sample_n):
+                num_t = i / sample_n * (1 - eps) + eps
+                t = torch.ones(b, device=device) * num_t
+                t = torch.cat([t, t], 0)
+                pred = model.forward_with_cfg(z, t * 999, cond_image, cond_action, args.cfg_scale)
+                pred = torch.cat([pred, pred], 0)
+                z = z.detach().clone() + pred * dt
 
-            samples = model.forward_with_cfg(z, t * 999, cond_image, cond_action, args.cfg_scale)
-            samples = samples[:, 0]
+            samples = z[:b, 0]
             pred_image = vae.decode(samples / 0.18215).sample
             results.append((pred_image, gt_image, action))
             break
@@ -240,13 +245,15 @@ if __name__ == "__main__":
     running_loss = 0
     start_time = time()
 
+    log_every = args.steps // 100
+    ckpt_every = args.steps // 10
+
     eps = 0.001
 
     save_ckpt(valid_loader, model, ema, opt, args, train_steps)
 
     logger.info(f"Training for {args.steps} steps...")
     for epoch in range(100000):
-        logger.info(f"Beginning epoch {epoch}...")
         for image, action in train_loader:
             image = image.to(device)
             action = action.to(device)
@@ -280,7 +287,7 @@ if __name__ == "__main__":
             running_loss += loss.item()
             log_steps += 1
             train_steps += 1
-            if train_steps % args.log_every == 0:
+            if train_steps % log_every == 0:
                 # Measure training speed:
                 torch.cuda.synchronize()
                 end_time = time()
@@ -289,6 +296,7 @@ if __name__ == "__main__":
                 avg_loss = torch.tensor(running_loss / log_steps, device=device)
                 avg_loss = avg_loss.item()
                 logger.info(
+                    f"(epoch={epoch:04d}) "
                     f"(step={train_steps:07d}) "
                     f"Train Loss: {avg_loss:.4f}, "
                     f"Train Steps/Sec: {steps_per_sec:.2f}",
@@ -299,7 +307,7 @@ if __name__ == "__main__":
                 start_time = time()
 
             # Save DiT checkpoint:
-            if train_steps % args.ckpt_every == 0:
+            if train_steps % ckpt_every == 0:
                 save_ckpt(valid_loader, model, ema, opt, args, train_steps)
                 model.train()
 
