@@ -33,22 +33,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def sample_images(
+    loader: DataLoader,
     model: torch.nn.Module,
     vae: AutoencoderKL,
     args: argparse.Namespace,
 ) -> torch.Tensor:
     image_size = args.image_size
     with torch.no_grad():
-        dataset = MineRLDataset(args.data_path, image_size)
-        loader = DataLoader(
-            dataset,
-            batch_size=int(args.batch_size),
-            shuffle=False,
-            num_workers=args.num_workers,
-            pin_memory=True,
-            drop_last=True,
-        )
-
         device = model.parameters().__next__().device
         latent_size = image_size // 8
 

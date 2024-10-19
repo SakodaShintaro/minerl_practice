@@ -13,13 +13,11 @@ from copy import deepcopy
 from pathlib import Path
 from time import time
 
-import numpy as np
 import torch
 from diffusers.models import AutoencoderKL
 from diffusion import create_diffusion
 from minerl_dataset import MineRLDataset
 from models import DiT_models
-from PIL import Image
 from sample import sample_images
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
@@ -75,25 +73,44 @@ def create_logger(logging_dir: str) -> logging.Logger:
     )
     return logging.getLogger(__name__)
 
-
-def center_crop_arr(pil_image: Image, image_size: int) -> Image:
-    """Center cropping implementation from ADM.
-
-    https://github.com/openai/guided-diffusion/blob/8fb3ad9197f16bbc40620447b2742e13458d2831/guided_diffusion/image_datasets.py#L126
-    """
-    while min(*pil_image.size) >= 2 * image_size:
-        pil_image = pil_image.resize(tuple(x // 2 for x in pil_image.size), resample=Image.BOX)
-
-    scale = image_size / min(*pil_image.size)
-    pil_image = pil_image.resize(
-        tuple(round(x * scale) for x in pil_image.size),
-        resample=Image.BICUBIC,
+def save_ckpt(  # noqa: PLR0913
+    loader: DataLoader,
+    model: torch.nn.Module,
+    ema: torch.nn.Module,
+    opt: torch.optim.Optimizer,
+    args: argparse.Namespace,
+    train_steps: int,
+) -> None:
+    results_dir = args.results_dir
+    checkpoint_dir = results_dir / "checkpoints"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = f"{checkpoint_dir}/{train_steps:08d}.pt"
+    checkpoint = {
+        "model": model.state_dict(),
+        "ema": ema.state_dict(),
+        "opt": opt.state_dict(),
+        "args": args,
+    }
+    torch.save(checkpoint, checkpoint_path)
+    model.eval()
+    samples = sample_images(loader, model, vae, args)
+    sample_dir = results_dir / "samples"
+    sample_dir.mkdir(parents=True, exist_ok=True)
+    pred, gt, action = samples[0]
+    save_image(
+        pred,
+        sample_dir / f"{train_steps:08d}_pred.png",
+        nrow=4,
+        normalize=True,
+        value_range=(-1, 1),
     )
-
-    arr = np.array(pil_image)
-    crop_y = (arr.shape[0] - image_size) // 2
-    crop_x = (arr.shape[1] - image_size) // 2
-    return Image.fromarray(arr[crop_y : crop_y + image_size, crop_x : crop_x + image_size])
+    save_image(
+        gt,
+        sample_dir / f"{train_steps:08d}_gt.png",
+        nrow=4,
+        normalize=True,
+        value_range=(-1, 1),
+    )
 
 
 #################################################################################
@@ -148,16 +165,26 @@ if __name__ == "__main__":
         opt.load_state_dict(ckpt["opt"])
 
     # Setup data
-    dataset = MineRLDataset(args.data_path, image_size=image_size)
-    loader = DataLoader(
-        dataset,
+    train_dataset = MineRLDataset(args.data_path, image_size=image_size)
+    train_loader = DataLoader(
+        train_dataset,
         batch_size=int(args.batch_size),
         shuffle=True,
         num_workers=args.num_workers,
         pin_memory=True,
         drop_last=True,
     )
-    logger.info(f"Dataset contains {len(dataset):,} images ({args.data_path})")
+    logger.info(f"Dataset contains {len(train_dataset):,} images ({args.data_path})")
+
+    valid_dataset = MineRLDataset(args.data_path, image_size=image_size)
+    valid_loader = DataLoader(
+        train_dataset,
+        batch_size=int(args.batch_size),
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=True,
+        drop_last=True,
+    )
 
     # Prepare models for training:
     update_ema(ema, model, decay=0)  # Ensure EMA is initialized with synced weights
@@ -172,10 +199,12 @@ if __name__ == "__main__":
     epoch = 0
     start_time = time()
 
+    save_ckpt(valid_loader, model, ema, opt, args, train_steps)
+
     while True:
         epoch += 1
         logger.info(f"Beginning epoch {epoch}...")
-        for batch in loader:
+        for batch in train_loader:
             image, action = batch
             image = image.to(device)  # [b, seq, c, h, w]
             action = action.to(device)  # [b, seq, action_dim]
@@ -237,33 +266,8 @@ if __name__ == "__main__":
                 start_time = time()
 
             # Save DiT checkpoint:
-            if train_steps % args.ckpt_every == 0 or train_steps == 1:
-                checkpoint = {
-                    "model": model.state_dict(),
-                    "ema": ema.state_dict(),
-                    "opt": opt.state_dict(),
-                    "args": args,
-                }
-                checkpoint_path = f"{checkpoint_dir}/{train_steps:07d}.pt"
-                torch.save(checkpoint, checkpoint_path)
-                logger.info(f"Saved checkpoint to {checkpoint_path}")
-                model.eval()
-                samples = sample_images(model, vae, args)
-                pred, gt, action = samples[0]
-                save_image(
-                    pred,
-                    results_dir / f"{train_steps:08d}_pred.png",
-                    nrow=4,
-                    normalize=True,
-                    value_range=(-1, 1),
-                )
-                save_image(
-                    gt,
-                    results_dir / f"{train_steps:08d}_gt.png",
-                    nrow=4,
-                    normalize=True,
-                    value_range=(-1, 1),
-                )
+            if train_steps % args.ckpt_every == 0:
+                save_ckpt(valid_loader, model, ema, opt, args, train_steps)
                 model.train()
 
             if train_steps >= limit_steps:
@@ -272,32 +276,5 @@ if __name__ == "__main__":
             break
 
     # Save final checkpoint:
-    checkpoint = {
-        "model": model.state_dict(),
-        "ema": ema.state_dict(),
-        "opt": opt.state_dict(),
-        "args": args,
-    }
-    checkpoint_path = f"{checkpoint_dir}/{train_steps:07d}.pt"
-    torch.save(checkpoint, checkpoint_path)
-    logger.info(f"Saved checkpoint to {checkpoint_path}")
-
-    model.eval()
-    samples = sample_images(model, vae, args)
-    pred, gt, action = samples[0]
-    save_image(
-        pred,
-        results_dir / "last_pred.png",
-        nrow=4,
-        normalize=True,
-        value_range=(-1, 1),
-    )
-    save_image(
-        gt,
-        results_dir / "last_gt.png",
-        nrow=4,
-        normalize=True,
-        value_range=(-1, 1),
-    )
-
+    save_ckpt(valid_loader, model, ema, opt, args, train_steps)
     logger.info("Done!")
