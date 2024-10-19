@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ckpt_every", type=int, default=500)
     parser.add_argument("--ckpt", type=Path, default=None)
     parser.add_argument("--dataset", type=str, choices=["mnist", "cifar10", "stl10"])
-    parser.add_argument("--cfg_scale", type=float, default=4.0)
+    parser.add_argument("--cfg_scale", type=float, default=0.0)
     parser.add_argument("--nfe", type=int, default=20, help="Number of Function Evaluations")
     return parser.parse_args()
 
