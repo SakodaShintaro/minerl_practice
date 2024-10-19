@@ -34,18 +34,16 @@ torch.backends.cudnn.allow_tf32 = True
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--ckpt_every", type=int, default=500)
+    parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--ckpt", type=Path, default=None)
     parser.add_argument("--cfg_scale", type=float, default=1.0)
     parser.add_argument("--data_path", type=Path, required=True)
     parser.add_argument("--image_size", type=int, default=32)
-    parser.add_argument("--log_every", type=int, default=100)
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
     parser.add_argument("--nfe", type=int, default=100, help="Number of Function Evaluations")
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--results_dir", type=Path, default="results")
-    parser.add_argument("--steps", type=int, default=5_000)
+    parser.add_argument("--steps", type=int, default=50_000)
     parser.add_argument("--use_flow_matching", action="store_true")
     return parser.parse_args()
 
@@ -188,7 +186,7 @@ if __name__ == "__main__":
 
     valid_dataset = deepcopy(train_dataset)
     valid_loader = DataLoader(
-        train_dataset,
+        valid_dataset,
         batch_size=int(args.batch_size),
         shuffle=False,
         num_workers=args.num_workers,
@@ -209,6 +207,9 @@ if __name__ == "__main__":
     running_loss = 0
     epoch = 0
     start_time = time()
+
+    ckpt_every = args.steps // 10
+    log_every = max(args.steps // 200, 1)
 
     save_ckpt(valid_loader, model, ema, opt, args, train_steps)
     model.train()
@@ -258,7 +259,7 @@ if __name__ == "__main__":
             running_loss += loss.item()
             log_steps += 1
             train_steps += 1
-            if train_steps % args.log_every == 0:
+            if train_steps % log_every == 0:
                 # Measure training speed:
                 torch.cuda.synchronize()
                 end_time = time()
@@ -278,7 +279,7 @@ if __name__ == "__main__":
                 start_time = time()
 
             # Save DiT checkpoint:
-            if train_steps % args.ckpt_every == 0:
+            if train_steps % ckpt_every == 0:
                 save_ckpt(valid_loader, model, ema, opt, args, train_steps)
                 model.train()
 
