@@ -1,1 +1,0 @@
-../train_diffusion/minerl_dataset.py
