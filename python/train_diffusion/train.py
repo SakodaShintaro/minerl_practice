@@ -45,6 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--results_dir", type=Path, default="results")
     parser.add_argument("--steps", type=int, default=5_000)
+    parser.add_argument("--use_flow_matching", action="store_true")
     return parser.parse_args()
 
 
@@ -105,6 +106,7 @@ if __name__ == "__main__":
     assert torch.cuda.is_available(), "Training currently requires at least one GPU."
 
     args = parse_args()
+    use_flow_matching = args.use_flow_matching
 
     device = 0
     seed = 0
@@ -185,15 +187,27 @@ if __name__ == "__main__":
                 image = image.view(b * seq, c, h, w)
                 image = vae.encode(image).latent_dist.sample().mul_(0.18215)
                 image = image.view(b, seq, 4, hidden_h, hidden_w)
-            t = torch.randint(0, diffusion.num_timesteps, (image.shape[0],), device=device)
 
             cond_image = image[:, :-1]
             pred_image = image[:, -1:]
             cond_action = action[:, :-1]
 
-            model_kwargs = {"cond_image": cond_image, "cond_action": cond_action}
-            loss_dict = diffusion.training_losses(model, pred_image, t, model_kwargs)
-            loss = loss_dict["loss"].mean()
+            if use_flow_matching:
+                noise = torch.randn_like(pred_image)
+                eps = 0.001
+                t = torch.rand(b, device=device) * (1 - eps) + eps
+                t = t.view(-1, 1, 1, 1)
+                perturbed_data = t * pred_image + (1 - t) * noise
+                t = t.squeeze()
+                out = model(perturbed_data, t * 999, cond_image, cond_action)
+                target = pred_image - noise
+                loss = torch.mean(torch.square(out - target))
+            else:
+                t = torch.randint(0, diffusion.num_timesteps, (image.shape[0],), device=device)
+                model_kwargs = {"cond_image": cond_image, "cond_action": cond_action}
+                loss_dict = diffusion.training_losses(model, pred_image, t, model_kwargs)
+                loss = loss_dict["loss"].mean()
+
             opt.zero_grad()
             loss.backward()
             opt.step()
