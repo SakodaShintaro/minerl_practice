@@ -12,6 +12,4 @@ DATA_PATH="../../data"
 python3 train_flow_matching.py \
   --model=${MODEL_NAME} \
   --data_path=${DATA_PATH} \
-  --results_dir=${result_dir} \
-  --batch_size=64 \
-  --ckpt_every=5000
+  --results_dir=${result_dir}

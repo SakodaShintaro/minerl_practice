@@ -199,7 +199,7 @@ class DiT(nn.Module):
             input_size, patch_size, in_channels, hidden_size, bias=True
         )
         self.t_embedder = TimestepEmbedder(hidden_size)
-        self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
+        self.action_embedder = nn.Linear(24, hidden_size)
         num_patches = self.x_embedder.num_patches
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(
@@ -236,9 +236,6 @@ class DiT(nn.Module):
         nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
         nn.init.constant_(self.x_embedder.proj.bias, 0)
 
-        # Initialize label embedding table:
-        nn.init.normal_(self.y_embedder.embedding_table.weight, std=0.02)
-
         # Initialize timestep embedding MLP:
         nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
@@ -269,40 +266,44 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y):
+    def forward(self, x, t, cond_image, cond_action):
         """
         Forward pass of DiT.
-        x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
+        x: (N, T_in, C, H, W) tensor of spatial inputs (latent representations of images)
         t: (N,) tensor of diffusion timesteps
-        y: (N,) tensor of class labels
+        cond_image: (N, T_cond, C, H, W) tensor of spatial inputs (latent representations of images)
+        cond_action: (N, T_cond, D) tensor of class labels
         """
-        x = (
-            self.x_embedder(x) + self.pos_embed
-        )  # (N, T, D), where T = H * W / patch_size ** 2
+        N, T_in, C, H, W = x.shape
+        T_cond = cond_image.shape[1]
+        T_sum = T_in + T_cond
+        image = torch.cat([x, cond_image], dim=1)  # (N, T_sum, C, H, W)
+        image = image.reshape(N * T_sum, C, H, W)  # (N * T_sum, C, H, W)
+        image = (
+            self.x_embedder(image) + self.pos_embed
+        )  # (N * T_sum, L, D), where L = H * W / patch_size ** 2
+        L, D = image.shape[1:3]
+        image = image.reshape(N, T_sum * L, D)  # (N, T_sum * L, D)
         t = self.t_embedder(t)  # (N, D)
-        y = self.y_embedder(y, self.training)  # (N, D)
-        c = t + y  # (N, D)
+        action = self.action_embedder(cond_action)  # (N, T_cond, D)
+        x = torch.cat([image, action], dim=1)  # (N, T_sum * L + T_cond, D)
+        c = t  # (N, D)
         for block in self.blocks:
-            x = block(x, c)  # (N, T, D)
-        x = self.final_layer(x, c)  # (N, T, patch_size ** 2 * out_channels)
-        x = self.unpatchify(x)  # (N, out_channels, H, W)
+            x = block(x, c)  # (N, T_sum * L + T_cond, D)
+        x = x[:, 0 : (T_in * L)]  # (N, T_in * L, D)
+        x = self.final_layer(x, c)  # (N, T_in * L, patch_size ** 2 * out_channels)
+        x = self.unpatchify(x)  # (N * T_in, out_channels, H, W)
+        x = x.reshape(N, T_in, self.out_channels, H, W)  # (N, T_in, out_channels, H, W)
         return x
 
-    def forward_with_cfg(self, x, t, y, cfg_scale):
+    def forward_with_cfg(self, x, t, cond_image, cond_action, cfg_scale):
         """
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
-        model_out = self.forward(x, t, y)
-        # For exact reproducibility reasons, we apply classifier-free guidance on only
-        # three channels by default. The standard approach to cfg applies it to all channels.
-        # This can be done by uncommenting the following line and commenting-out the line following that.
-        # eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
-        eps, rest = model_out[:, :3], model_out[:, 3:]
-        cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
-        half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
-        eps = torch.cat([half_eps, half_eps], dim=0)
-        return torch.cat([eps, rest], dim=1)
+        model_out = self.forward(x, t, cond_image, cond_action)
+        cond, uncond = torch.split(model_out, len(model_out) // 2, dim=0)
+        return uncond + cfg_scale * (cond - uncond)
 
 
 #################################################################################

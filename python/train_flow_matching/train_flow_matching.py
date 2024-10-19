@@ -36,10 +36,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_classes", type=int, default=10)
     parser.add_argument("--data_path", type=Path, required=True)
     parser.add_argument("--results_dir", type=Path, default="results")
-    parser.add_argument("--epochs", type=int, default=140)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--steps", type=int, default=5_000)
     parser.add_argument("--log_every", type=int, default=100)
     parser.add_argument("--ckpt_every", type=int, default=500)
     parser.add_argument("--ckpt", type=Path, default=None)
@@ -70,37 +70,55 @@ def sample_images(
     vae: AutoencoderKL,
     args: argparse.Namespace,
 ) -> torch.Tensor:
-    latent_size = image_size // 8
-    num_classes = args.num_classes
-    device = model.parameters().__next__().device
-
-    # Labels to condition the model with (feel free to change):
-    class_labels = list(range(num_classes))
-
-    # Create sampling noise:
-    n = len(class_labels)
-    z = torch.randn(n, 4, latent_size, latent_size, device=device)
-    y = torch.tensor(class_labels, device=device)
-
-    # add null
-    z = torch.cat([z, z], 0)
-    y_null = torch.tensor([num_classes] * n, device=device)
-    y = torch.cat([y, y_null], 0)
-
-    sample_n = args.nfe
-
+    image_size = args.image_size
     with torch.no_grad():
-        dt = 1.0 / sample_n
-        for i in range(sample_n):
-            num_t = i / sample_n * (1 - eps) + eps
-            t = torch.ones(n, device=device) * num_t
-            t = torch.cat([t, t], 0)
-            pred = model.forward_with_cfg(z, t * 999, y, args.cfg_scale)
+        dataset = MineRLDataset(args.data_path, image_size)
+        loader = DataLoader(
+            dataset,
+            batch_size=int(args.batch_size),
+            shuffle=False,
+            num_workers=args.num_workers,
+            pin_memory=True,
+            drop_last=True,
+        )
 
-            z = z.detach().clone() + pred * dt
+        device = model.parameters().__next__().device
+        latent_size = image_size // 8
 
-        z = torch.split(z, n, dim=0)[0]
-        return vae.decode(z / 0.18215).sample
+        results = []
+
+        for batch in loader:
+            image, action = batch
+            image = image.to(device)  # [b, seq, c, h, w]
+            gt_image = image[:, -1]
+            action = action.to(device)  # [b, seq, action_dim]
+            b, seq, c, h, w = image.shape
+            hidden_h = h // 8
+            hidden_w = w // 8
+            # Map input images to latent space + normalize latents:
+            image = image.view(b * seq, c, h, w)
+            image = vae.encode(image).latent_dist.sample().mul_(0.18215)
+            image = image.view(b, seq, 4, hidden_h, hidden_w)
+
+            cond_image = image[:, :-1]
+
+            # Create sampling noise:
+            z = torch.randn(b, 1, 4, latent_size, latent_size, device=device)
+
+            # Setup classifier-free guidance:
+            z = torch.cat([z, z], 0)
+            cond_image = torch.cat([cond_image, cond_image], 0)
+            cond_action = torch.cat([action, action], 0)
+
+            t = torch.zeros(cond_image.shape[0], device=device)
+
+            samples = model.forward_with_cfg(z, t * 999, cond_image, cond_action, args.cfg_scale)
+            samples = samples[:, 0]
+            pred_image = vae.decode(samples / 0.18215).sample
+            results.append((pred_image, gt_image, action))
+            break
+
+        return results
 
 
 def save_ckpt(
@@ -125,9 +143,17 @@ def save_ckpt(
     samples = sample_images(model, vae, args)
     sample_dir = results_dir / "samples"
     sample_dir.mkdir(parents=True, exist_ok=True)
+    pred, gt, action = samples[0]
     save_image(
-        samples,
-        sample_dir / f"{train_steps:08d}.png",
+        pred,
+        sample_dir / f"{train_steps:08d}_pred.png",
+        nrow=4,
+        normalize=True,
+        value_range=(-1, 1),
+    )
+    save_image(
+        gt,
+        sample_dir / f"{train_steps:08d}_gt.png",
         nrow=4,
         normalize=True,
         value_range=(-1, 1),
@@ -217,8 +243,8 @@ if __name__ == "__main__":
 
     save_ckpt(model, ema, opt, args, train_steps)
 
-    logger.info(f"Training for {args.epochs} epochs...")
-    for epoch in range(args.epochs):
+    logger.info(f"Training for {args.steps} steps...")
+    for epoch in range(100000):
         logger.info(f"Beginning epoch {epoch}...")
         for image, action in loader:
             image = image.to(device)
@@ -241,7 +267,7 @@ if __name__ == "__main__":
             t = t.view(-1, 1, 1, 1)
             perturbed_data = t * pred_image + (1 - t) * noise
             t = t.squeeze()
-            out = model(perturbed_data, t * 999, action)
+            out = model(perturbed_data, t * 999, cond_image, cond_action)
             target = pred_image - noise
             loss = torch.mean(torch.square(out - target))
             opt.zero_grad()
@@ -275,6 +301,12 @@ if __name__ == "__main__":
             if train_steps % args.ckpt_every == 0:
                 save_ckpt(model, ema, opt, args, train_steps)
                 model.train()
+
+            if train_steps >= args.steps:
+                break
+
+        if train_steps >= args.steps:
+            break
 
     # Save final checkpoint:
     save_ckpt(model, ema, opt, args, train_steps)
