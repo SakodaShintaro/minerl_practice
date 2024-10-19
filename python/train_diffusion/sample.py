@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
     parser.add_argument("--data_path", type=Path, required=True)
-    parser.add_argument("--global_batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--ckpt", type=Path, required=True)
@@ -42,7 +42,7 @@ def sample_images(
         dataset = MineRLDataset(args.data_path, image_size)
         loader = DataLoader(
             dataset,
-            batch_size=int(args.global_batch_size),
+            batch_size=int(args.batch_size),
             shuffle=False,
             num_workers=args.num_workers,
             pin_memory=True,
