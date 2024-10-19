@@ -272,7 +272,7 @@ if __name__ == "__main__":
             cond_action = action[:, :-1]
 
             noise = torch.randn_like(pred_image)
-            t = torch.rand(image.shape[0], device=device) * (1 - eps) + eps
+            t = torch.rand(b, device=device) * (1 - eps) + eps
             t = t.view(-1, 1, 1, 1)
             perturbed_data = t * pred_image + (1 - t) * noise
             t = t.squeeze()
