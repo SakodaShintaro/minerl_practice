@@ -212,6 +212,7 @@ if __name__ == "__main__":
                 avg_loss = torch.tensor(running_loss / log_steps, device=device)
                 avg_loss = avg_loss.item()
                 logger.info(
+                    f"(epoch={epoch:04d}) "
                     f"(step={train_steps:07d}) "
                     f"Train Loss: {avg_loss:.4f}, "
                     f"Train Steps/Sec: {steps_per_sec:.2f}",
