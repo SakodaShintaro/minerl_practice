@@ -31,19 +31,17 @@ torch.backends.cudnn.allow_tf32 = True
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
-    parser.add_argument("--image_size", type=int, default=32)
-    parser.add_argument("--num_classes", type=int, default=10)
-    parser.add_argument("--data_path", type=Path, required=True)
-    parser.add_argument("--results_dir", type=Path, default="results")
     parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
-    parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--steps", type=int, default=50_000)
+    parser.add_argument("--cfg_scale", type=float, default=1.0)
     parser.add_argument("--ckpt", type=Path, default=None)
-    parser.add_argument("--dataset", type=str, choices=["mnist", "cifar10", "stl10"])
-    parser.add_argument("--cfg_scale", type=float, default=0.0)
-    parser.add_argument("--nfe", type=int, default=20, help="Number of Function Evaluations")
+    parser.add_argument("--data_path", type=Path, required=True)
+    parser.add_argument("--image_size", type=int, default=32)
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
+    parser.add_argument("--nfe", type=int, default=100, help="Number of Function Evaluations")
+    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--results_dir", type=Path, default="results")
+    parser.add_argument("--steps", type=int, default=5_000)
     return parser.parse_args()
 
 
@@ -70,7 +68,7 @@ def sample_images(
     args: argparse.Namespace,
 ) -> torch.Tensor:
     image_size = args.image_size
-    sample_n = 100
+    sample_n = args.nfe
     with torch.no_grad():
         device = model.parameters().__next__().device
         latent_size = image_size // 8
@@ -105,7 +103,9 @@ def sample_images(
                 num_t = i / sample_n * (1 - eps) + eps
                 t = torch.ones(b, device=device) * num_t
                 t = torch.cat([t, t], 0)
-                pred = model.forward_with_cfg(z, t * 999, cond_image, cond_action, args.cfg_scale)
+                pred = model.forward(z, t * 999, cond_image, cond_action)
+                cond, uncond = pred.chunk(2, 0)
+                pred = uncond + (cond - uncond) * args.cfg_scale
                 pred = torch.cat([pred, pred], 0)
                 z = z.detach().clone() + pred * dt
 
@@ -193,7 +193,6 @@ if __name__ == "__main__":
     ckpt = torch.load(args.ckpt) if args.ckpt is not None else None
     model = DiT_models[args.model](
         input_size=latent_size,
-        num_classes=args.num_classes,
         learn_sigma=False,
     )
     if ckpt is not None:
