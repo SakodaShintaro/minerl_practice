@@ -184,7 +184,7 @@ if __name__ == "__main__":
         pin_memory=True,
         drop_last=True,
     )
-    logger.info(f"Dataset contains {len(train_dataset):,} images ({args.data_path})")
+    logger.info(f"Train Dataset contains {len(train_dataset):,} images ({args.data_path})")
 
     valid_dataset = deepcopy(train_dataset)
     valid_loader = DataLoader(
@@ -195,11 +195,12 @@ if __name__ == "__main__":
         pin_memory=True,
         drop_last=True,
     )
+    logger.info(f"Valid Dataset contains {len(train_dataset):,} images ({args.data_path})")
 
     # Prepare models for training:
     update_ema(ema, model, decay=0)  # Ensure EMA is initialized with synced weights
-    model.train()  # important! This enables embedding dropout for classifier-free guidance
-    ema.eval()  # EMA model should always be in eval mode
+    ema.eval()
+    logger.info("Finish setup ema")
 
     # Variables for monitoring/logging purposes:
     limit_steps = args.steps
@@ -210,6 +211,7 @@ if __name__ == "__main__":
     start_time = time()
 
     save_ckpt(valid_loader, model, ema, opt, args, train_steps)
+    model.train()
 
     while True:
         epoch += 1
@@ -235,7 +237,7 @@ if __name__ == "__main__":
                 noise = torch.randn_like(pred_image)
                 eps = 0.001
                 t = torch.rand(b, device=device) * (1 - eps) + eps
-                t = t.view(-1, 1, 1, 1)
+                t = t.view(-1, 1, 1, 1, 1)
                 perturbed_data = t * pred_image + (1 - t) * noise
                 t = t.squeeze()
                 out = model(perturbed_data, t * 999, cond_image, cond_action)
