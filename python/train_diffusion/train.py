@@ -18,7 +18,8 @@ from diffusers.models import AutoencoderKL
 from diffusion import create_diffusion
 from minerl_dataset import MineRLDataset
 from models import DiT_models
-from sample import sample_images
+from sample_by_diffusion import sample_images_by_diffusion
+from sample_by_flow_matching import sample_images_by_flow_matching
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 
@@ -73,6 +74,7 @@ def create_logger(logging_dir: str) -> logging.Logger:
     )
     return logging.getLogger(__name__)
 
+
 def save_ckpt(  # noqa: PLR0913
     loader: DataLoader,
     model: torch.nn.Module,
@@ -93,7 +95,10 @@ def save_ckpt(  # noqa: PLR0913
     }
     torch.save(checkpoint, checkpoint_path)
     model.eval()
-    samples = sample_images(loader, model, vae, args)
+    sample_function = (
+        sample_images_by_flow_matching if args.use_flow_matching else sample_images_by_diffusion
+    )
+    samples = sample_function(loader, model, vae, args)
     sample_dir = results_dir / "samples"
     sample_dir.mkdir(parents=True, exist_ok=True)
     pred, gt, action = samples[0]

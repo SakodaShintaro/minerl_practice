@@ -12,7 +12,6 @@ from pathlib import Path
 import torch
 from diffusers.models import AutoencoderKL
 from diffusion import create_diffusion
-from minerl_dataset import MineRLDataset
 from models import DiT_models
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
@@ -32,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def sample_images(
+def sample_images_by_diffusion(
     loader: DataLoader,
     model: torch.nn.Module,
     vae: AutoencoderKL,
@@ -113,7 +112,7 @@ if __name__ == "__main__":
     model.eval()  # important!
     vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
 
-    result_list = sample_images(model, vae, args)
+    result_list = sample_images_by_diffusion(model, vae, args)
 
     save_dir = args.ckpt.parent.parent / "samples"
     save_dir.mkdir(exist_ok=True, parents=True)
