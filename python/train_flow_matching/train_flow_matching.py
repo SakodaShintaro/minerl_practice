@@ -251,6 +251,7 @@ if __name__ == "__main__":
     eps = 0.001
 
     save_ckpt(valid_loader, model, ema, opt, args, train_steps)
+    model.train()
 
     logger.info(f"Training for {args.steps} steps...")
     for epoch in range(100000):
