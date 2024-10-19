@@ -254,7 +254,7 @@ if __name__ == "__main__":
     model.train()
 
     logger.info(f"Training for {args.steps} steps...")
-    for epoch in range(100000):
+    for epoch in range(1, 100000):
         for image, action in train_loader:
             image = image.to(device)
             action = action.to(device)
