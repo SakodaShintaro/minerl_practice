@@ -257,7 +257,7 @@ class DiT(nn.Module):
         N, T_in, C, H, W = x.shape
         T_cond = cond_image.shape[1]
         T_sum = T_in + T_cond
-        image = torch.cat([cond_image, x], dim=1) # (N, T_sum, C, H, W)
+        image = torch.cat([x, cond_image], dim=1) # (N, T_sum, C, H, W)
         image = image.reshape(N * T_sum, C, H, W)  # (N * T_sum, C, H, W)
         image = self.x_embedder(image) + self.pos_embed  # (N * T_sum, L, D), where L = H * W / patch_size ** 2
         L, D = image.shape[1:3]
