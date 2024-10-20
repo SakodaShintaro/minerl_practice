@@ -42,7 +42,7 @@ class MineRLDataset(VisionDataset):
             obs_list = obs_list[: len(action_list)]
 
             self.data_list += zip(obs_list, action_list)
-        self.seq_len = 4
+        self.seq_len = 2
 
     def __getitem__(self, index: int) -> list[tuple[Any, Any]]:
         """Get item.
