@@ -1,10 +1,24 @@
 """Sample by flow matching."""
 
 import argparse
+from pathlib import Path
 
 import torch
 from diffusers.models import AutoencoderKL
+from minerl_dataset import MineRLDataset
+from models import DiT_models
 from torch.utils.data import DataLoader
+from torchvision.utils import save_image
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_path", type=Path, required=True)
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--ckpt", type=Path, required=True)
+    return parser.parse_args()
 
 
 def sample_images_by_flow_matching(
@@ -63,3 +77,60 @@ def sample_images_by_flow_matching(
             break
 
         return results
+
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    # Setup PyTorch:
+    torch.manual_seed(args.seed)
+    torch.set_grad_enabled(False)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Load model:
+    state_dict = torch.load(str(args.ckpt))
+    train_args = state_dict["args"]
+    args.image_size = train_args.image_size
+    latent_size = train_args.image_size // 8
+    model = DiT_models[train_args.model](
+        input_size=latent_size,
+        learn_sigma=not train_args.use_flow_matching,
+    ).to(device)
+    # Auto-download a pre-trained model or load a custom DiT checkpoint from train.py:
+    model.load_state_dict(state_dict["model"])
+    model.eval()  # important!
+    vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
+
+    dataset = MineRLDataset(args.data_path, image_size=train_args.image_size)
+    loader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=True,
+        drop_last=True,
+    )
+
+    args.nfe = train_args.nfe
+    args.cfg_scale = train_args.cfg_scale
+    result_list = sample_images_by_flow_matching(loader, model, vae, args)
+
+    save_dir = args.ckpt.parent.parent / "samples"
+    save_dir.mkdir(exist_ok=True, parents=True)
+
+    for i, data_tuple in enumerate(result_list):
+        pred, gt, action = data_tuple
+        save_image(
+            pred,
+            save_dir / f"{i:08d}_sample_pred.png",
+            nrow=4,
+            normalize=True,
+            value_range=(-1, 1),
+        )
+        save_image(
+            gt,
+            save_dir / f"{i:08d}_sample_gt.png",
+            nrow=4,
+            normalize=True,
+            value_range=(-1, 1),
+        )
