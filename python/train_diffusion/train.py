@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--nfe", type=int, default=100, help="Number of Function Evaluations")
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--results_dir", type=Path, default="results")
-    parser.add_argument("--steps", type=int, default=5_000)
+    parser.add_argument("--steps", type=int, default=50_000)
     parser.add_argument("--use_flow_matching", action="store_true")
     return parser.parse_args()
 
