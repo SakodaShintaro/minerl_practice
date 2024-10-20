@@ -182,27 +182,26 @@ if __name__ == "__main__":
         opt.load_state_dict(ckpt["opt"])
 
     # Setup data
-    train_dataset = MineRLDataset(args.data_path, image_size=image_size)
+    dataset = MineRLDataset(args.data_path, image_size=image_size)
+    logger.info(f"Train Dataset contains {len(dataset):,} images ({args.data_path})")
+
     train_loader = DataLoader(
-        train_dataset,
+        dataset,
         batch_size=int(args.batch_size),
         shuffle=True,
         num_workers=args.num_workers,
         pin_memory=True,
         drop_last=True,
     )
-    logger.info(f"Train Dataset contains {len(train_dataset):,} images ({args.data_path})")
 
-    valid_dataset = deepcopy(train_dataset)
     valid_loader = DataLoader(
-        valid_dataset,
-        batch_size=int(args.batch_size),
+        dataset,
+        batch_size=32,
         shuffle=False,
         num_workers=args.num_workers,
         pin_memory=True,
         drop_last=True,
     )
-    logger.info(f"Valid Dataset contains {len(train_dataset):,} images ({args.data_path})")
 
     # Prepare models for training:
     update_ema(ema, model, decay=0)  # Ensure EMA is initialized with synced weights
