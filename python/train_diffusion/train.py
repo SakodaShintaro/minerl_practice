@@ -13,6 +13,7 @@ from copy import deepcopy
 from pathlib import Path
 from time import time
 
+import pandas as pd
 import torch
 from diffusers.models import AutoencoderKL
 from diffusion import create_diffusion
@@ -43,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--nfe", type=int, default=100, help="Number of Function Evaluations")
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--results_dir", type=Path, default="results")
-    parser.add_argument("--steps", type=int, default=50_000)
+    parser.add_argument("--steps", type=int, default=5_000)
     parser.add_argument("--use_flow_matching", action="store_true")
     return parser.parse_args()
 
@@ -73,6 +74,14 @@ def create_logger(logging_dir: str) -> logging.Logger:
         handlers=[logging.StreamHandler(), logging.FileHandler(f"{logging_dir}/log.txt")],
     )
     return logging.getLogger(__name__)
+
+
+def second_to_str(seconds: float) -> str:
+    """Convert seconds to a human-readable string."""
+    second_int = int(seconds)
+    minutes, seconds = divmod(second_int, 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours:03d}:{minutes:02d}:{seconds:02d}"
 
 
 def save_ckpt(  # noqa: PLR0913
@@ -214,6 +223,8 @@ if __name__ == "__main__":
     save_ckpt(valid_loader, model, ema, opt, args, train_steps)
     model.train()
 
+    log_dict_list = []
+
     while True:
         epoch += 1
         logger.info(f"Beginning epoch {epoch}...")
@@ -263,20 +274,32 @@ if __name__ == "__main__":
                 # Measure training speed:
                 torch.cuda.synchronize()
                 end_time = time()
-                steps_per_sec = log_steps / (end_time - start_time)
-                # Reduce loss history over all processes:
-                avg_loss = torch.tensor(running_loss / log_steps, device=device)
-                avg_loss = avg_loss.item()
+                elapsed_time = end_time - start_time
+                remaining_time = elapsed_time * (limit_steps - train_steps) / train_steps
+                elapsed_time_str = second_to_str(elapsed_time)
+                remaining_time_str = second_to_str(remaining_time)
+
+                avg_loss = running_loss / log_steps
                 logger.info(
-                    f"(epoch={epoch:04d}) "
-                    f"(step={train_steps:07d}) "
-                    f"Train Loss: {avg_loss:.4f}, "
-                    f"Train Steps/Sec: {steps_per_sec:.2f}",
+                    f"remaining_time={remaining_time_str} "
+                    f"elapsed_time={elapsed_time_str} "
+                    f"epoch={epoch:04d} "
+                    f"step={train_steps:08d} "
+                    f"loss={avg_loss:.4f}",
                 )
+                log_dict_list.append(
+                    {
+                        "elapsed_time": elapsed_time_str,
+                        "epoch": epoch,
+                        "step": train_steps,
+                        "loss": avg_loss,
+                    },
+                )
+                df = pd.DataFrame(log_dict_list)
+                df.to_csv(results_dir / "log.tsv", index=False, sep="\t")
                 # Reset monitoring variables:
                 running_loss = 0
                 log_steps = 0
-                start_time = time()
 
             # Save DiT checkpoint:
             if train_steps % ckpt_every == 0:
