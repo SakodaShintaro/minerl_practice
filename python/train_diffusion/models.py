@@ -262,15 +262,10 @@ class DiT(nn.Module):
         image = self.x_embedder(image) + self.pos_embed  # (N * T_sum, L, D), where L = H * W / patch_size ** 2
         L, D = image.shape[1:3]
         image = image.reshape(N, T_sum * L, D)  # (N, T_sum * L, D)
-        x, cond_x = image.split([T_in * L, T_cond * L], dim=1)  # (N, T_in * L, D), (N, T_cond * L, D)
-        cond_x = cond_x.mean(dim=1)  # (N, D)
-
         t = self.t_embedder(t)  # (N, D)
-
         action = self.action_embedder(cond_action)  # (N, T_cond, D)
-        action = action.mean(dim=1)  # (N, D)
-
-        c = t + cond_x + action  # (N, D)
+        x = torch.cat([image, action], dim=1)  # (N, T_cond * (L + 1), D)
+        c = t  # (N, D)
         for block in self.blocks:
             x = block(x, c)  # (N, T_sum * (L + 1), D)
         x = x[:, 0:(T_in * L)] # (N, T_in * L, D)
