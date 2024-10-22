@@ -74,7 +74,8 @@ class MineRLDataset(VisionDataset):
             """
             # cameraを先頭に入れて、それ以外はonehotベクトルにする
             action = [
-                *action["camera"],
+                action["camera"][0] / 180,
+                action["camera"][1] / 180,
                 action["attack"],
                 action["back"],
                 action["drop"],
