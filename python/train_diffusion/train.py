@@ -46,6 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--results_dir", type=Path, default="results")
     parser.add_argument("--steps", type=int, default=150_000)
     parser.add_argument("--use_flow_matching", action="store_true")
+    parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser.parse_args()
 
 
@@ -177,7 +178,7 @@ if __name__ == "__main__":
     logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
     # Setup optimizer
-    opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0)
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=args.weight_decay)
     if ckpt is not None:
         opt.load_state_dict(ckpt["opt"])
 
