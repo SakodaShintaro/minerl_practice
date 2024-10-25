@@ -46,17 +46,11 @@ if __name__ == "__main__":
     done = False
     step = 0
 
-    prev_inventory = 0
-
     while not done:
         # Take a random action
         action = env.action_space.sample()
         action["ESC"] = 0
         print(action)
-
-        if prev_inventory == 1:
-            action["inventory"] = 0
-        prev_inventory = action["inventory"]
 
         # save obs and action
         Image.fromarray(obs).save(save_obs_dir / f"{step:08d}.png")
