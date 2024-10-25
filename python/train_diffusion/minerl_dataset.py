@@ -42,7 +42,7 @@ class MineRLDataset(VisionDataset):
             obs_list = obs_list[: len(action_list)]
 
             self.data_list += zip(obs_list, action_list)
-        self.seq_len = 2
+        self.seq_len = 3
 
     def __getitem__(self, index: int) -> list[tuple[Any, Any]]:
         """Get item.
@@ -73,32 +73,33 @@ class MineRLDataset(VisionDataset):
                'sprint': 0, 'swapHands': 0, 'use': 0}
             """
             # cameraを先頭に入れて、それ以外はonehotベクトルにする
-            action = [
-                action["camera"][0] / 180,
-                action["camera"][1] / 180,
-                action["attack"],
-                action["back"],
-                action["drop"],
-                action["forward"],
-                action["hotbar.1"],
-                action["hotbar.2"],
-                action["hotbar.3"],
-                action["hotbar.4"],
-                action["hotbar.5"],
-                action["hotbar.6"],
-                action["hotbar.7"],
-                action["hotbar.8"],
-                action["hotbar.9"],
-                action["inventory"],
-                action["jump"],
-                action["left"],
-                action["pickItem"],
-                action["right"],
-                action["sneak"],
-                action["sprint"],
-                action["swapHands"],
-                action["use"],
-            ]
+            # action = [
+            #     action["camera"][0] / 180,
+            #     action["camera"][1] / 180,
+            #     action["attack"],
+            #     action["back"],
+            #     action["drop"],
+            #     action["forward"],
+            #     action["hotbar.1"],
+            #     action["hotbar.2"],
+            #     action["hotbar.3"],
+            #     action["hotbar.4"],
+            #     action["hotbar.5"],
+            #     action["hotbar.6"],
+            #     action["hotbar.7"],
+            #     action["hotbar.8"],
+            #     action["hotbar.9"],
+            #     action["inventory"],
+            #     action["jump"],
+            #     action["left"],
+            #     action["pickItem"],
+            #     action["right"],
+            #     action["sneak"],
+            #     action["sprint"],
+            #     action["swapHands"],
+            #     action["use"],
+            # ]
+            action = [action["inventory"] for i in range(24)]
             action = torch.tensor(action, dtype=torch.float32)
 
             if self.transform is not None:
@@ -109,6 +110,17 @@ class MineRLDataset(VisionDataset):
             action_list.append(action)
         image_tensor = torch.stack(image_list)
         action_tensor = torch.stack(action_list)
+
+        # actionを修正する
+        for i in range(self.seq_len - 1, 0, -1):
+            curr = action_tensor[i].mean()
+            prev = action_tensor[i - 1].mean()
+            if curr == 1.0 and prev == 1.0:
+                action_tensor[i].fill_(0.0)
+
+        image_tensor = image_tensor[1:]
+        action_tensor = action_tensor[1:]
+
         return image_tensor, action_tensor
 
     def __len__(self) -> int:
