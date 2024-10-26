@@ -11,6 +11,7 @@ import logging
 from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
+from shutil import rmtree
 from time import time
 
 import pandas as pd
@@ -95,6 +96,7 @@ def save_ckpt(  # noqa: PLR0913
 ) -> None:
     results_dir = args.results_dir
     checkpoint_dir = results_dir / "checkpoints"
+    rmtree(checkpoint_dir, ignore_errors=True)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = f"{checkpoint_dir}/{train_steps:08d}.pt"
     checkpoint = {
