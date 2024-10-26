@@ -42,7 +42,7 @@ class MineRLDataset(VisionDataset):
             obs_list = obs_list[: len(action_list)]
 
             self.data_list += zip(obs_list, action_list)
-        self.seq_len = 2
+        self.seq_len = 3
 
     def __getitem__(self, index: int) -> list[tuple[Any, Any]]:
         """Get item.
@@ -109,6 +109,18 @@ class MineRLDataset(VisionDataset):
             action_list.append(action)
         image_tensor = torch.stack(image_list)
         action_tensor = torch.stack(action_list)
+
+        if True:
+            # inventory actionの長押しを修正する
+            for i in range(self.seq_len - 1, 0, -1):
+                curr = action_tensor[i][15]
+                prev = action_tensor[i - 1][15]
+                if curr == 1.0 and prev == 1.0:
+                    action_tensor[i][15].fill_(0.0)
+
+            image_tensor = image_tensor[1:]
+            action_tensor = action_tensor[1:]
+
         return image_tensor, action_tensor
 
     def __len__(self) -> int:
