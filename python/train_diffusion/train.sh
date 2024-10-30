@@ -6,7 +6,7 @@ cd ${script_dir}
 
 result_dir=${script_dir}/../../train_result/$(date +"%Y%m%d_%H%M%S")
 
-MODEL_NAME="DiT-L/2"
+MODEL_NAME="DiT-S/2"
 DATA_PATH="../../data"
 
 python3 train.py \

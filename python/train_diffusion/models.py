@@ -15,6 +15,7 @@ import torch.nn as nn
 import numpy as np
 import math
 from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
+from mamba_ssm import Mamba2
 
 
 def modulate(x, shift, scale):
@@ -186,6 +187,14 @@ class DiT(nn.Module):
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
+        self.mamba = Mamba2(
+            # This module uses roughly 3 * expand * d_model^2 parameters
+            d_model=hidden_size,  # Model dimension d_model
+            d_state=64,  # SSM state expansion factor, typically 64 or 128
+            d_conv=4,  # Local convolution width
+            expand=4,  # Block expansion factor
+        )
+
         self.blocks = nn.ModuleList(
             [DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)]
         )
@@ -262,10 +271,15 @@ class DiT(nn.Module):
         image = self.x_embedder(image) + self.pos_embed  # (N * T_sum, L, D), where L = H * W / patch_size ** 2
         L, D = image.shape[1:3]
         image = image.reshape(N, T_sum * L, D)  # (N, T_sum * L, D)
-        t = self.t_embedder(t)  # (N, D)
+        x, cond_image = image.split([T_in * L, T_cond * L], dim=1)  # (N, T_in * L, D), (N, T_cond * L, D)
+        cond_image = cond_image.reshape(N, T_cond, L, D)  # (N, T_cond, L, D)
+        cond_image = cond_image.mean(dim=2)  # (N, T_cond, D)
         action = self.action_embedder(cond_action)  # (N, T_cond, D)
-        x = torch.cat([image, action], dim=1)  # (N, T_cond * (L + 1), D)
-        c = t  # (N, D)
+        cond = cond_image + action  # (N, T_cond, D)
+        cond_feature = self.mamba(cond)  # (N, T_cond, D)
+        last = cond_feature[:, -1]  # (N, D)
+        t = self.t_embedder(t)  # (N, D)
+        c = t + last # (N, D)
         for block in self.blocks:
             x = block(x, c)  # (N, T_sum * (L + 1), D)
         x = x[:, 0:(T_in * L)] # (N, T_in * L, D)
