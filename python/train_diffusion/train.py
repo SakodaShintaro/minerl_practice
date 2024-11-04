@@ -17,10 +17,8 @@ from time import time
 import pandas as pd
 import torch
 from diffusers.models import AutoencoderKL
-from diffusion import create_diffusion
 from minerl_dataset import MineRLDataset
 from models import DiT_models
-from sample_by_diffusion import sample_images_by_diffusion
 from sample_by_flow_matching import sample_images_by_flow_matching
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
@@ -36,7 +34,7 @@ torch.backends.cudnn.allow_tf32 = True
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--ckpt", type=Path, default=None)
     parser.add_argument("--cfg_scale", type=float, default=1.0)
     parser.add_argument("--data_path", type=Path, required=True)
@@ -46,7 +44,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--results_dir", type=Path, default="results")
     parser.add_argument("--steps", type=int, default=100_000)
-    parser.add_argument("--use_flow_matching", action="store_true")
     parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser.parse_args()
 
@@ -107,9 +104,7 @@ def save_ckpt(  # noqa: PLR0913
     }
     torch.save(checkpoint, checkpoint_path)
     model.eval()
-    sample_function = (
-        sample_images_by_flow_matching if args.use_flow_matching else sample_images_by_diffusion
-    )
+    sample_function = sample_images_by_flow_matching
     samples = sample_function(loader, model, vae, args)
     sample_dir = results_dir / "samples"
     sample_dir.mkdir(parents=True, exist_ok=True)
@@ -140,7 +135,6 @@ if __name__ == "__main__":
     assert torch.cuda.is_available(), "Training currently requires at least one GPU."
 
     args = parse_args()
-    use_flow_matching = args.use_flow_matching
 
     device = 0
     seed = 0
@@ -163,7 +157,7 @@ if __name__ == "__main__":
     ckpt = torch.load(args.ckpt) if args.ckpt is not None else None
     model = DiT_models[args.model](
         input_size=(latent_size, latent_size),
-        learn_sigma=not args.use_flow_matching,
+        learn_sigma=False,
     )
     if ckpt is not None:
         model.load_state_dict(ckpt["model"])
@@ -173,9 +167,6 @@ if __name__ == "__main__":
         ema.load_state_dict(ckpt["ema"])
     requires_grad(ema, flag=False)
     model = model.to(device)
-    diffusion = create_diffusion(
-        timestep_respacing="",
-    )  # default: 1000 steps, linear noise schedule
     vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
     logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
@@ -247,21 +238,15 @@ if __name__ == "__main__":
             pred_image = image[:, -1:]
             cond_action = action[:, :-1]
 
-            if use_flow_matching:
-                noise = torch.randn_like(pred_image)
-                eps = 0.001
-                t = torch.rand(b, device=device) * (1 - eps) + eps
-                t = t.view(-1, 1, 1, 1, 1)
-                perturbed_data = t * pred_image + (1 - t) * noise
-                t = t.squeeze()
-                out = model(perturbed_data, t * 999, cond_image, cond_action)
-                target = pred_image - noise
-                loss = torch.mean(torch.square(out - target))
-            else:
-                t = torch.randint(0, diffusion.num_timesteps, (image.shape[0],), device=device)
-                model_kwargs = {"cond_image": cond_image, "cond_action": cond_action}
-                loss_dict = diffusion.training_losses(model, pred_image, t, model_kwargs)
-                loss = loss_dict["loss"].mean()
+            noise = torch.randn_like(pred_image)
+            eps = 0.001
+            t = torch.rand(b, device=device) * (1 - eps) + eps
+            t = t.view(-1, 1, 1, 1, 1)
+            perturbed_data = t * pred_image + (1 - t) * noise
+            t = t.squeeze()
+            out = model(perturbed_data, t * 999, cond_image, cond_action)
+            target = pred_image - noise
+            loss = torch.mean(torch.square(out - target))
 
             opt.zero_grad()
             loss.backward()

@@ -12,5 +12,4 @@ DATA_PATH="../../data"
 python3 train.py \
   --model=${MODEL_NAME} \
   --data_path=${DATA_PATH} \
-  --results_dir=${result_dir} \
-  --use_flow_matching
+  --results_dir=${result_dir}
