@@ -243,7 +243,7 @@ if __name__ == "__main__":
             t = torch.rand(b, device=device) * (1 - eps) + eps
             t = t.view(-1, 1, 1, 1, 1)
             perturbed_data = t * pred_image + (1 - t) * noise
-            t = t.squeeze()
+            t = t.squeeze((1, 2, 3, 4))
             out = model(perturbed_data, t * 999, cond_image, cond_action)
             target = pred_image - noise
             loss = torch.mean(torch.square(out - target))
