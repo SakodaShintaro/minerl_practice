@@ -43,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--nfe", type=int, default=100, help="Number of Function Evaluations")
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--results_dir", type=Path, default="results")
+    parser.add_argument("--seq_len", type=int, default=(16 + 1))
     parser.add_argument("--steps", type=int, default=100_000)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser.parse_args()
@@ -176,7 +177,7 @@ if __name__ == "__main__":
         opt.load_state_dict(ckpt["opt"])
 
     # Setup data
-    dataset = MineRLDataset(args.data_path, image_size=image_size)
+    dataset = MineRLDataset(args.data_path, image_size=image_size, seq_len=args.seq_len)
     logger.info(f"Train Dataset contains {len(dataset):,} images ({args.data_path})")
 
     train_loader = DataLoader(

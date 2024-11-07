@@ -21,6 +21,7 @@ class MineRLDataset(VisionDataset):
         self,
         root: Path,
         image_size: int,
+        seq_len: int,
     ) -> None:
         transform = transforms.Compose(
             [
@@ -42,7 +43,7 @@ class MineRLDataset(VisionDataset):
             obs_list = obs_list[: len(action_list)]
 
             self.data_list += zip(obs_list, action_list)
-        self.seq_len = 17
+        self.seq_len = seq_len
 
     def __getitem__(self, index: int) -> list[tuple[Any, Any]]:
         """Get item.
