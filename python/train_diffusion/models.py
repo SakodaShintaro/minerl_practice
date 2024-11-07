@@ -288,27 +288,6 @@ class DiT(nn.Module):
         x = x.reshape(N, T_in, self.out_channels, H, W)  # (N, T_in, out_channels, H, W)
         return x
 
-    def forward_with_cfg(self, x, t, cond_image, cond_action, cfg_scale):
-        """
-        Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
-        """
-        # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
-        half = x[: len(x) // 2]
-        combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(combined, t, cond_image, cond_action)
-        B, L, C, H, W = model_out.shape
-        model_out = model_out.reshape((B, L * 2, C // 2, H, W))
-        return model_out
-        # For exact reproducibility reasons, we apply classifier-free guidance on only
-        # three channels by default. The standard approach to cfg applies it to all channels.
-        # This can be done by uncommenting the following line and commenting-out the line following that.
-        # eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
-        eps, rest = model_out[:, :3], model_out[:, 3:]
-        cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
-        half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
-        eps = torch.cat([half_eps, half_eps], dim=0)
-        return torch.cat([eps, rest], dim=1)
-
 
 #################################################################################
 #                   Sine/Cosine Positional Embedding Functions                  #
