@@ -288,6 +288,47 @@ class DiT(nn.Module):
         x = x.reshape(N, T_in, self.out_channels, H, W)  # (N, T_in, out_channels, H, W)
         return x
 
+    def allocate_inference_cache(self, batch_size, dtype=None):
+        return self.mamba.allocate_inference_cache(batch_size, max_seqlen=0, dtype=dtype)
+
+    def step(self, curr_image, curr_action, conv_state, ssm_state):
+        """
+        Update the model state for a single timestep.
+        curr_image: (1, C, H, W) tensor of spatial inputs (latent representations of images)
+        curr_action: (1, 24) tensor of class labels
+        conv_state, ssm_state: mamaba states
+        """
+        N, C, H, W = curr_image.shape
+        assert N == 1
+
+        curr_image = (
+            self.x_embedder(curr_image) + self.pos_embed
+        ) # (1, L, D), where L = H * W / patch_size ** 2
+        curr_image = curr_image.mean(dim=1)  # (1, D)
+
+        curr_action = self.action_embedder(curr_action)  # (1, D)
+
+        curr_cond = curr_image + curr_action  # (1, D)
+        curr_cond = curr_cond.unsqueeze(1)  # (1, 1, D)
+
+        return self.mamba.step(curr_cond, conv_state, ssm_state)
+
+    def predict(self, x, t, feature):
+        """
+        Predict image by using the current feature.
+        x: (1, C, H, W) tensor of spatial inputs (latent representations of images)
+        t: (1,) tensor of diffusion timesteps
+        feature: (1, D) tensor of feature
+        """
+        x = self.x_embedder(x) + self.pos_embed  # (1, L, D), where L = H * W / patch_size ** 2
+        t = self.t_embedder(t)  # (1, D)
+        feature = feature.squeeze(1)  # (1, D)
+        c = t + feature  # (1, D)
+        for block in self.blocks:
+            x = block(x, c)
+        x = self.final_layer(x, c)
+        x = self.unpatchify(x)  # (1, out_channels, H, W)
+        return x
 
 #################################################################################
 #                   Sine/Cosine Positional Embedding Functions                  #
