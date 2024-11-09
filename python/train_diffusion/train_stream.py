@@ -19,7 +19,6 @@ import torch
 from diffusers.models import AutoencoderKL
 from minerl_dataset import MineRLDataset
 from models import DiT_models
-from sample_by_flow_matching import sample_images_by_flow_matching
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 
@@ -84,8 +83,42 @@ def second_to_str(seconds: float) -> str:
     return f"{hours:03d}:{minutes:02d}:{seconds:02d}"
 
 
-def save_ckpt(  # noqa: PLR0913
-    loader: DataLoader,
+def sample_images_by_flow_matching(
+    model: torch.nn.Module,
+    feature: torch.Tensor,
+    vae: AutoencoderKL,
+    args: argparse.Namespace,
+) -> torch.Tensor:
+    image_size = args.image_size
+    sample_n = args.nfe
+    eps = 0.001
+    b = 1
+    with torch.no_grad():
+        device = model.parameters().__next__().device
+        latent_size = image_size // 8
+
+        # Create sampling noise:
+        z = torch.randn(b, 4, latent_size, latent_size, device=device)
+
+        # Setup classifier-free guidance:
+        z = torch.cat([z, z], 0)
+
+        dt = 1.0 / sample_n
+        for i in range(sample_n):
+            num_t = i / sample_n * (1 - eps) + eps
+            t = torch.ones(b, device=device) * num_t
+            t = torch.cat([t, t], 0)
+            pred = model.predict(z, t * 999, feature)
+            cond, uncond = pred.chunk(2, 0)
+            pred = uncond + (cond - uncond) * args.cfg_scale
+            pred = torch.cat([pred, pred], 0)
+            z = z.detach().clone() + pred * dt
+
+        samples = z[:b]
+        return vae.decode(samples / 0.18215).sample
+
+
+def save_ckpt(
     model: torch.nn.Module,
     ema: torch.nn.Module,
     opt: torch.optim.Optimizer,
@@ -105,26 +138,6 @@ def save_ckpt(  # noqa: PLR0913
     }
     torch.save(checkpoint, checkpoint_path)
     model.eval()
-    return
-    sample_function = sample_images_by_flow_matching
-    samples = sample_function(loader, model, vae, args)
-    sample_dir = results_dir / "samples"
-    sample_dir.mkdir(parents=True, exist_ok=True)
-    pred, gt, action = samples[0]
-    save_image(
-        pred,
-        sample_dir / f"{train_steps:08d}_pred.png",
-        nrow=4,
-        normalize=True,
-        value_range=(-1, 1),
-    )
-    save_image(
-        gt,
-        sample_dir / f"{train_steps:08d}_gt.png",
-        nrow=4,
-        normalize=True,
-        value_range=(-1, 1),
-    )
 
 
 #################################################################################
@@ -215,7 +228,7 @@ if __name__ == "__main__":
     ckpt_every = args.steps // 10
     log_every = max(args.steps // 200, 1)
 
-    save_ckpt(valid_loader, model, ema, opt, args, train_steps)
+    save_ckpt(model, ema, opt, args, train_steps)
     model.train()
 
     conv_state, ssm_state = model.allocate_inference_cache(args.batch_size)
@@ -229,6 +242,7 @@ if __name__ == "__main__":
         for batch in train_loader:
             # (1) 画像tが得られる
             image, action = batch
+            image_gt = image
             image = image.to(device)  # [1, 1, c, h, w]
             action = action.to(device)  # [1, 1, action_dim]
             b, seq, c, h, w = image.shape
@@ -258,6 +272,14 @@ if __name__ == "__main__":
                 loss.backward()
                 opt.step()
                 update_ema(ema, model)
+
+                pred_image = sample_images_by_flow_matching(model, feature, vae, args)
+                save_dir = results_dir / "predict"
+                save_dir.mkdir(parents=True, exist_ok=True)
+                save_image(pred_image, save_dir / f"{train_steps:08d}.png")
+                save_dir = results_dir / "gt"
+                save_dir.mkdir(parents=True, exist_ok=True)
+                save_image(image_gt[:, 0], save_dir / f"{train_steps:08d}.png")
 
             # (3) Update state
             feature, conv_state, ssm_state = model.step(
@@ -308,7 +330,7 @@ if __name__ == "__main__":
 
             # Save DiT checkpoint:
             if train_steps % ckpt_every == 0:
-                save_ckpt(valid_loader, model, ema, opt, args, train_steps)
+                save_ckpt(model, ema, opt, args, train_steps)
                 model.train()
 
             if train_steps >= limit_steps:
@@ -317,5 +339,5 @@ if __name__ == "__main__":
             break
 
     # Save final checkpoint:
-    save_ckpt(valid_loader, model, ema, opt, args, train_steps)
+    save_ckpt(model, ema, opt, args, train_steps)
     logger.info("Done!")
