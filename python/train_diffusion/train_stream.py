@@ -232,6 +232,7 @@ if __name__ == "__main__":
 
     ckpt_every = args.steps // 10
     log_every = max(args.steps // 200, 1)
+    logger.info(f"{ckpt_every=}, {log_every=}")
 
     save_ckpt(model, ema, opt, args, train_steps)
     model.train()
