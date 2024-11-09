@@ -157,6 +157,10 @@ if __name__ == "__main__":
     torch.cuda.set_device(device)
     print(f"Starting seed={seed}.")
 
+    # 1000ステップごとに10ステップを出力する
+    validate_period = 1000
+    validate_num = 10
+
     # Setup an experiment folder:
     results_dir = args.results_dir
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -224,6 +228,7 @@ if __name__ == "__main__":
     running_loss = 0
     epoch = 0
     start_time = time()
+    loss_image_ave = 0
 
     ckpt_every = args.steps // 10
     log_every = max(args.steps // 200, 1)
@@ -242,9 +247,9 @@ if __name__ == "__main__":
         for batch in train_loader:
             # (1) 画像tが得られる
             image, action = batch
-            image_gt = image
             image = image.to(device)  # [1, 1, c, h, w]
             action = action.to(device)  # [1, 1, action_dim]
+            image_gt = image[:, 0]
             b, seq, c, h, w = image.shape
             hidden_h = h // 8
             hidden_w = w // 8
@@ -256,6 +261,31 @@ if __name__ == "__main__":
 
             curr_image = image[0]  # [1, 4, hidden_h, hidden_w]
             curr_action = action[0]  # [1, action_dim]
+
+            # validate
+            if feature is not None and train_steps % validate_period < validate_num:
+                if train_steps % validate_period == 0:
+                    loss_image_ave = 0
+                pred_image = sample_images_by_flow_matching(model, feature, vae, args)
+                save_dir = results_dir / "predict"
+                save_dir.mkdir(parents=True, exist_ok=True)
+                save_image(
+                    pred_image,
+                    save_dir / f"{train_steps:08d}.png",
+                    normalize=True,
+                    value_range=(-1, 1),
+                )
+                save_dir = results_dir / "gt"
+                save_dir.mkdir(parents=True, exist_ok=True)
+                save_image(
+                    image_gt,
+                    save_dir / f"{train_steps:08d}.png",
+                    normalize=True,
+                    value_range=(-1, 1),
+                )
+                diff = pred_image - image_gt
+                loss_image = torch.mean(torch.square(diff))
+                loss_image_ave += loss_image.item() / validate_num
 
             # (2) ノイズを作り、時系列モデルの状態で条件付けして画像[tex: t]を予測するように生成する
             if feature is not None:
@@ -272,14 +302,6 @@ if __name__ == "__main__":
                 loss.backward()
                 opt.step()
                 update_ema(ema, model)
-
-                pred_image = sample_images_by_flow_matching(model, feature, vae, args)
-                save_dir = results_dir / "predict"
-                save_dir.mkdir(parents=True, exist_ok=True)
-                save_image(pred_image, save_dir / f"{train_steps:08d}.png")
-                save_dir = results_dir / "gt"
-                save_dir.mkdir(parents=True, exist_ok=True)
-                save_image(image_gt[:, 0], save_dir / f"{train_steps:08d}.png")
 
             # (3) Update state
             feature, conv_state, ssm_state = model.step(
@@ -312,7 +334,8 @@ if __name__ == "__main__":
                     f"elapsed_time={elapsed_time_str} "
                     f"epoch={epoch:04d} "
                     f"step={train_steps:08d} "
-                    f"loss={avg_loss:.4f}",
+                    f"loss={avg_loss:.4f} "
+                    f"loss_image={loss_image_ave:.4f}",
                 )
                 log_dict_list.append(
                     {
@@ -320,6 +343,7 @@ if __name__ == "__main__":
                         "epoch": epoch,
                         "step": train_steps,
                         "loss": avg_loss,
+                        "loss_imag": loss_image_ave,
                     },
                 )
                 df = pd.DataFrame(log_dict_list)
