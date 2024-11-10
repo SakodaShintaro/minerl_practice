@@ -207,15 +207,6 @@ if __name__ == "__main__":
         drop_last=True,
     )
 
-    valid_loader = DataLoader(
-        dataset,
-        batch_size=32,
-        shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=True,
-        drop_last=True,
-    )
-
     # Prepare models for training:
     update_ema(ema, model, decay=0)  # Ensure EMA is initialized with synced weights
     ema.eval()
