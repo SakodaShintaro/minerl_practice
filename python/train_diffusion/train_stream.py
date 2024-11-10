@@ -331,7 +331,7 @@ if __name__ == "__main__":
                 )
                 log_dict_list.append(
                     {
-                        "elapsed_time": elapsed_time_str,
+                        "elapsed_time": elapsed_time,
                         "epoch": epoch,
                         "step": train_steps,
                         "loss": avg_loss,
