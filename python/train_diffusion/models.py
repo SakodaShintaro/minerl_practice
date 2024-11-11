@@ -169,8 +169,6 @@ class DiT(nn.Module):
         depth=28,
         num_heads=16,
         mlp_ratio=4.0,
-        class_dropout_prob=0.1,
-        num_classes=1000,
         learn_sigma=True,
     ):
         super().__init__()
@@ -266,12 +264,16 @@ class DiT(nn.Module):
         N, T_in, C, H, W = x.shape
         T_cond = cond_image.shape[1]
         T_sum = T_in + T_cond
-        image = torch.cat([x, cond_image], dim=1) # (N, T_sum, C, H, W)
+        image = torch.cat([x, cond_image], dim=1)  # (N, T_sum, C, H, W)
         image = image.reshape(N * T_sum, C, H, W)  # (N * T_sum, C, H, W)
-        image = self.x_embedder(image) + self.pos_embed  # (N * T_sum, L, D), where L = H * W / patch_size ** 2
+        image = (
+            self.x_embedder(image) + self.pos_embed
+        )  # (N * T_sum, L, D), where L = H * W / patch_size ** 2
         L, D = image.shape[1:3]
         image = image.reshape(N, T_sum * L, D)  # (N, T_sum * L, D)
-        x, cond_image = image.split([T_in * L, T_cond * L], dim=1)  # (N, T_in * L, D), (N, T_cond * L, D)
+        x, cond_image = image.split(
+            [T_in * L, T_cond * L], dim=1
+        )  # (N, T_in * L, D), (N, T_cond * L, D)
         cond_image = cond_image.reshape(N, T_cond, L, D)  # (N, T_cond, L, D)
         cond_image = cond_image.mean(dim=2)  # (N, T_cond, D)
         action = self.action_embedder(cond_action)  # (N, T_cond, D)
@@ -279,17 +281,21 @@ class DiT(nn.Module):
         cond_feature = self.mamba(cond)  # (N, T_cond, D)
         last = cond_feature[:, -1]  # (N, D)
         t = self.t_embedder(t)  # (N, D)
-        c = t + last # (N, D)
+        c = t + last  # (N, D)
         for block in self.blocks:
             x = block(x, c)  # (N, T_sum * (L + 1), D)
-        x = x[:, 0:(T_in * L)] # (N, T_in * L, D)
+        x = x[:, 0 : (T_in * L)]  # (N, T_in * L, D)
         x = self.final_layer(x, c)  # (N, T_in * L, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)  # (N * T_in, out_channels, H, W)
         x = x.reshape(N, T_in, self.out_channels, H, W)  # (N, T_in, out_channels, H, W)
         return x
 
     def allocate_inference_cache(self, batch_size, dtype=None):
-        return self.mamba.allocate_inference_cache(batch_size, max_seqlen=0, dtype=dtype)
+        conv_state, ssm_state = self.mamba.allocate_inference_cache(
+            batch_size, max_seqlen=0, dtype=dtype
+        )
+        feature = torch.zeros(batch_size, self.mamba.d_model, dtype=dtype, device=conv_state.device)
+        return feature, conv_state, ssm_state
 
     def step(self, curr_image, curr_action, conv_state, ssm_state):
         """
@@ -303,7 +309,7 @@ class DiT(nn.Module):
 
         curr_image = (
             self.x_embedder(curr_image) + self.pos_embed
-        ) # (1, L, D), where L = H * W / patch_size ** 2
+        )  # (1, L, D), where L = H * W / patch_size ** 2
         curr_image = curr_image.mean(dim=1)  # (1, D)
 
         curr_action = self.action_embedder(curr_action)  # (1, D)
@@ -329,6 +335,7 @@ class DiT(nn.Module):
         x = self.final_layer(x, c)
         x = self.unpatchify(x)  # (1, out_channels, H, W)
         return x
+
 
 #################################################################################
 #                   Sine/Cosine Positional Embedding Functions                  #

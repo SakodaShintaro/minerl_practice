@@ -228,8 +228,7 @@ if __name__ == "__main__":
     save_ckpt(model, ema, opt, args, train_steps)
     model.train()
 
-    conv_state, ssm_state = model.allocate_inference_cache(args.batch_size)
-    feature = None
+    feature, conv_state, ssm_state = model.allocate_inference_cache(args.batch_size)
 
     log_dict_list = []
 
@@ -255,7 +254,7 @@ if __name__ == "__main__":
             curr_action = action[0]  # [1, action_dim]
 
             # validate
-            if feature is not None and train_steps % validate_period < validate_num:
+            if train_steps % validate_period < validate_num:
                 if train_steps % validate_period == 0:
                     loss_image_ave = 0
                 pred_image = sample_images_by_flow_matching(model, feature, vae, args)
@@ -280,20 +279,19 @@ if __name__ == "__main__":
                 loss_image_ave += loss_image.item() / validate_num
 
             # (2) ノイズを作り、時系列モデルの状態で条件付けして画像[tex: t]を予測するように生成する
-            if feature is not None:
-                noise = torch.randn_like(curr_image)
-                eps = 0.001
-                t = torch.rand(b, device=device) * (1 - eps) + eps
-                t = t.view(-1, 1, 1, 1)
-                perturbed_data = t * curr_image + (1 - t) * noise
-                t = t.squeeze((1, 2, 3))
-                out = model.predict(perturbed_data, t * 999, feature)
-                target = curr_image - noise
-                loss = torch.mean(torch.square(out - target))
-                opt.zero_grad()
-                loss.backward()
-                opt.step()
-                update_ema(ema, model)
+            noise = torch.randn_like(curr_image)
+            eps = 0.001
+            t = torch.rand(b, device=device) * (1 - eps) + eps
+            t = t.view(-1, 1, 1, 1)
+            perturbed_data = t * curr_image + (1 - t) * noise
+            t = t.squeeze((1, 2, 3))
+            out = model.predict(perturbed_data, t * 999, feature)
+            target = curr_image - noise
+            loss = torch.mean(torch.square(out - target))
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            update_ema(ema, model)
 
             # (3) Update state
             feature, conv_state, ssm_state = model.step(
