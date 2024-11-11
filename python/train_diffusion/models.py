@@ -12,6 +12,7 @@
 
 import torch
 import torch.nn as nn
+from torch.distributions import Normal, Bernoulli
 import numpy as np
 import math
 from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
@@ -155,6 +156,69 @@ class FinalLayer(nn.Module):
         return x
 
 
+class PolicyHead(nn.Module):
+    def __init__(self, feature_dim: int, hidden_dim: int):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(feature_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+        )
+
+        # カメラ操作（連続値）用の出力層
+        self.camera_mean = nn.Linear(hidden_dim, 2)
+        self.camera_log_std = nn.Parameter(torch.zeros(2))
+
+        # ボタン操作（離散値）用の出力層
+        self.button_logits = nn.Linear(hidden_dim, 22)
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """方策の計算と行動のサンプリング"""
+        features = self.net(x)
+
+        # カメラ操作の確率分布
+        camera_mean = torch.tanh(self.camera_mean(features))
+        camera_std = self.camera_log_std.exp()
+        camera_dist = Normal(camera_mean, camera_std)
+
+        # ボタン操作の確率分布
+        button_logits = self.button_logits(features)
+        button_dist = Bernoulli(logits=button_logits)
+
+        # 行動のサンプリング
+        camera_action = camera_dist.sample()
+        button_action = button_dist.sample()
+
+        # 行動の対数確率を計算
+        camera_log_prob = camera_dist.log_prob(camera_action).sum(-1)
+        button_log_prob = button_dist.log_prob(button_action).sum(-1)
+        log_prob = camera_log_prob + button_log_prob
+
+        # エントロピー計算（探索の度合いを調整するために使用）
+        entropy = camera_dist.entropy().sum(-1) + button_dist.entropy().sum(-1)
+
+        # 行動を結合
+        action = torch.cat([camera_action, button_action], dim=-1)
+
+        return action, log_prob, entropy
+
+
+class ValueHead(nn.Module):
+    def __init__(self, feature_dim: int, hidden_dim: int):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(feature_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+
+
 class DiT(nn.Module):
     """
     Diffusion model with a Transformer backbone.
@@ -197,6 +261,10 @@ class DiT(nn.Module):
             [DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)]
         )
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
+
+        self.policy_head = PolicyHead(hidden_size, hidden_size)
+        self.value_head = ValueHead(hidden_size, hidden_size)
+
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -335,6 +403,12 @@ class DiT(nn.Module):
         x = self.final_layer(x, c)
         x = self.unpatchify(x)  # (1, out_channels, H, W)
         return x
+
+    def policy(self, feature):
+        return self.policy_head(feature)
+
+    def value(self, feature):
+        return self.value_head(feature)
 
 
 #################################################################################
