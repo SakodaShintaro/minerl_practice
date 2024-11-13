@@ -6,6 +6,7 @@ from shutil import rmtree
 
 import torch
 from diffusers.models import AutoencoderKL
+from torchvision.utils import save_image
 
 
 def requires_grad(model: torch.nn.Module, flag: bool) -> None:  # noqa: FBT001
@@ -22,6 +23,15 @@ def update_ema(ema_model: torch.nn.Module, model: torch.nn.Module, decay: float 
 
     for name, param in model_params.items():
         ema_params[name].mul_(decay).add_(param.data, alpha=1 - decay)
+
+
+def save_image_t(image: torch.Tensor, path: str) -> None:
+    save_image(
+        image,
+        path,
+        normalize=True,
+        value_range=(-1, 1),
+    )
 
 
 def save_ckpt(
@@ -51,6 +61,23 @@ def second_to_str(seconds: float) -> str:
     minutes, seconds = divmod(second_int, 60)
     hours, minutes = divmod(minutes, 60)
     return f"{hours:03d}:{minutes:02d}:{seconds:02d}"
+
+
+def loss_flow_matching(
+    model: torch.nn.Module,
+    curr_image: torch.Tensor,
+    feature: torch.Tensor,
+) -> torch.Tensor:
+    device = model.parameters().__next__().device
+    noise = torch.randn_like(curr_image)
+    eps = 0.001
+    t = torch.rand(1, device=device) * (1 - eps) + eps
+    t = t.view(-1, 1, 1, 1)
+    perturbed_data = t * curr_image + (1 - t) * noise
+    t = t.squeeze((1, 2, 3))
+    out = model.predict(perturbed_data, t * 999, feature)
+    target = curr_image - noise
+    return torch.mean(torch.square(out - target))
 
 
 def sample_images_by_flow_matching(

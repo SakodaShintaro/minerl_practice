@@ -8,10 +8,8 @@
 
 import argparse
 import logging
-from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
-from shutil import rmtree
 from time import time
 
 import pandas as pd
@@ -20,11 +18,12 @@ from diffusers.models import AutoencoderKL
 from minerl_dataset import MineRLDataset
 from models import DiT_models
 from torch.utils.data import DataLoader
-from torchvision.utils import save_image
 from utils import (
+    loss_flow_matching,
     requires_grad,
     sample_images_by_flow_matching,
     save_ckpt,
+    save_image_t,
     second_to_str,
     update_ema,
 )
@@ -94,6 +93,10 @@ if __name__ == "__main__":
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     logger = create_logger(results_dir)
     logger.info(f"Experiment directory created at {results_dir}")
+    pr_save_dir = results_dir / "predict"
+    pr_save_dir.mkdir(parents=True, exist_ok=True)
+    gt_save_dir = results_dir / "gt"
+    gt_save_dir.mkdir(parents=True, exist_ok=True)
 
     # Create model:
     image_size = args.image_size
@@ -184,36 +187,14 @@ if __name__ == "__main__":
                 if train_steps % validate_period == 0:
                     loss_image_ave = 0
                 pred_image = sample_images_by_flow_matching(model, feature, vae, args)
-                save_dir = results_dir / "predict"
-                save_dir.mkdir(parents=True, exist_ok=True)
-                save_image(
-                    pred_image,
-                    save_dir / f"{train_steps:08d}.png",
-                    normalize=True,
-                    value_range=(-1, 1),
-                )
-                save_dir = results_dir / "gt"
-                save_dir.mkdir(parents=True, exist_ok=True)
-                save_image(
-                    image_gt,
-                    save_dir / f"{train_steps:08d}.png",
-                    normalize=True,
-                    value_range=(-1, 1),
-                )
+                save_image_t(pred_image, pr_save_dir / f"{train_steps:08d}.png")
+                save_image_t(image_gt, gt_save_dir / f"{train_steps:08d}.png")
                 diff = pred_image - image_gt
                 loss_image = torch.mean(torch.square(diff))
                 loss_image_ave += loss_image.item() / validate_num
 
-            # (2) ノイズを作り、時系列モデルの状態で条件付けして画像[tex: t]を予測するように生成する
-            noise = torch.randn_like(curr_image)
-            eps = 0.001
-            t = torch.rand(b, device=device) * (1 - eps) + eps
-            t = t.view(-1, 1, 1, 1)
-            perturbed_data = t * curr_image + (1 - t) * noise
-            t = t.squeeze((1, 2, 3))
-            out = model.predict(perturbed_data, t * 999, feature)
-            target = curr_image - noise
-            loss = torch.mean(torch.square(out - target))
+            # (2) flow matchingの学習
+            loss = loss_flow_matching(model, curr_image, feature)
             opt.zero_grad()
             loss.backward()
             opt.step()
