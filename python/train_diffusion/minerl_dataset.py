@@ -144,17 +144,6 @@ class MineRLDataset(VisionDataset):
         image_tensor = torch.stack(image_list)
         action_tensor = torch.stack(action_list)
 
-        if False:
-            # inventory actionの長押しを修正する
-            for i in range(self.seq_len - 1, 0, -1):
-                curr = action_tensor[i][15]
-                prev = action_tensor[i - 1][15]
-                if curr == 1.0 and prev == 1.0:
-                    action_tensor[i][15].fill_(0.0)
-
-            image_tensor = image_tensor[1:]
-            action_tensor = action_tensor[1:]
-
         return image_tensor, action_tensor
 
     def __len__(self) -> int:
