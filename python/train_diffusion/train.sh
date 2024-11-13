@@ -13,3 +13,5 @@ python3 train_stream.py \
   --model=${MODEL_NAME} \
   --data_path=${DATA_PATH} \
   --results_dir=${result_dir}
+
+python3 plot_images.py ${result_dir}

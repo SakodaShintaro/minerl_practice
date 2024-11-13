@@ -59,12 +59,12 @@ if __name__ == "__main__":
     # Setup an experiment folder:
     results_dir = args.results_dir
     results_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_dir = results_dir / "checkpoints"
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
     pr_save_dir = results_dir / "predict"
     pr_save_dir.mkdir(parents=True, exist_ok=True)
     gt_save_dir = results_dir / "gt"
     gt_save_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_dir = results_dir / "checkpoints"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     # Set up logging
     logging.basicConfig(
@@ -95,17 +95,17 @@ if __name__ == "__main__":
 
     # Variables for monitoring/logging purposes:
     limit_steps = args.limit_steps
-    train_steps = 0
-    log_steps = 0
-    running_loss = 0
     epoch = 0
-    start_time = time()
-    loss_image_ave = 0
-    validate_period = 1000  # 1000ステップごとに
-    validate_num = 10  # 10ステップ出力する
+    train_steps = 0
+    train_loss = 0
+    valid_loss = 0
+    VALIDATE_EVERY = 1000  # 1000ステップごとに
+    VALIDATE_NUM = 10  # 10ステップ出力する
     ckpt_every = limit_steps // 10
     log_every = max(limit_steps // 200, 1)
     logger.info(f"{ckpt_every=}, {log_every=}")
+
+    start_time = time()
 
     save_ckpt(model, ema, opt, args, train_steps)
     model.train()
@@ -118,6 +118,8 @@ if __name__ == "__main__":
         epoch += 1
         logger.info(f"Beginning epoch {epoch}...")
         for batch in train_loader:
+            train_steps += 1
+
             # (1) 画像tが得られる
             image, action = batch
             image = image.to(device)  # [1, 1, c, h, w]
@@ -136,15 +138,15 @@ if __name__ == "__main__":
             curr_action = action[0]  # [1, action_dim]
 
             # validate
-            if train_steps % validate_period < validate_num:
-                if train_steps % validate_period == 0:
-                    loss_image_ave = 0
+            if train_steps % VALIDATE_EVERY < VALIDATE_NUM:
+                if train_steps % VALIDATE_EVERY == 0:
+                    valid_loss = 0
                 pred_image = sample_images_by_flow_matching(model, feature, vae, args)
                 save_image_t(pred_image, pr_save_dir / f"{train_steps:08d}.png")
                 save_image_t(image_gt, gt_save_dir / f"{train_steps:08d}.png")
                 diff = pred_image - image_gt
                 loss_image = torch.mean(torch.square(diff))
-                loss_image_ave += loss_image.item() / validate_num
+                valid_loss += loss_image.item() / VALIDATE_NUM
 
             # (2) flow matchingの学習
             loss = loss_flow_matching(model, curr_image, feature)
@@ -161,14 +163,11 @@ if __name__ == "__main__":
                 ssm_state,
             )
 
-            log_steps += 1
-            train_steps += 1
-
             if train_steps == 1:
                 continue
 
             # Log loss values:
-            running_loss += loss.item()
+            train_loss += loss.item()
             if train_steps % log_every == 0:
                 # Measure training speed:
                 torch.cuda.synchronize()
@@ -178,14 +177,14 @@ if __name__ == "__main__":
                 elapsed_time_str = second_to_str(elapsed_time)
                 remaining_time_str = second_to_str(remaining_time)
 
-                avg_loss = running_loss / log_steps
+                avg_loss = train_loss / log_every
                 logger.info(
                     f"remaining_time={remaining_time_str} "
                     f"elapsed_time={elapsed_time_str} "
                     f"epoch={epoch:04d} "
                     f"step={train_steps:08d} "
                     f"loss={avg_loss:.4f} "
-                    f"loss_image={loss_image_ave:.4f}",
+                    f"loss_image={valid_loss:.4f}",
                 )
                 log_dict_list.append(
                     {
@@ -193,14 +192,12 @@ if __name__ == "__main__":
                         "epoch": epoch,
                         "step": train_steps,
                         "loss": avg_loss,
-                        "loss_imag": loss_image_ave,
+                        "loss_imag": valid_loss,
                     },
                 )
                 df = pd.DataFrame(log_dict_list)
                 df.to_csv(results_dir / "log.tsv", index=False, sep="\t")
-                # Reset monitoring variables:
-                running_loss = 0
-                log_steps = 0
+                train_loss = 0
 
             # Save DiT checkpoint:
             if train_steps % ckpt_every == 0:
