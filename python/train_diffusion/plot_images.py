@@ -26,7 +26,7 @@ if __name__ == "__main__":
     pred_paths = sorted(dir_pred.glob("*.png"))
 
     curr_images = []
-    prev_id = -1
+    prev_id = 0
     for gt_path, pred_path in zip(gt_paths, pred_paths):
         curr_id = int(gt_path.stem)
         gt = cv2.imread(str(gt_path))

@@ -33,14 +33,12 @@ torch.backends.cudnn.allow_tf32 = True
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--ckpt", type=Path, default=None)
     parser.add_argument("--cfg_scale", type=float, default=1.0)
     parser.add_argument("--data_path", type=Path, required=True)
     parser.add_argument("--image_size", type=int, default=32)
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
     parser.add_argument("--nfe", type=int, default=100, help="Number of Function Evaluations")
-    parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--results_dir", type=Path, default="results")
     parser.add_argument("--limit_steps", type=int, default=100_000)
     parser.add_argument("--weight_decay", type=float, default=0.0)
@@ -74,7 +72,6 @@ if __name__ == "__main__":
         handlers=[logging.StreamHandler(), logging.FileHandler(f"{results_dir}/log.txt")],
     )
     logger = logging.getLogger(__name__)
-    logger.info(f"Experiment directory created at {results_dir}")
 
     # Create model:
     model, ema, vae, opt = create_models(args, device)
@@ -86,9 +83,9 @@ if __name__ == "__main__":
 
     train_loader = DataLoader(
         dataset,
-        batch_size=int(args.batch_size),
+        batch_size=1,
         shuffle=False,
-        num_workers=args.num_workers,
+        num_workers=1,
         pin_memory=True,
         drop_last=True,
     )
@@ -110,7 +107,7 @@ if __name__ == "__main__":
     save_ckpt(model, ema, opt, args, train_steps)
     model.train()
 
-    feature, conv_state, ssm_state = model.allocate_inference_cache(args.batch_size)
+    feature, conv_state, ssm_state = model.allocate_inference_cache(batch_size=1)
 
     log_dict_list = []
 
