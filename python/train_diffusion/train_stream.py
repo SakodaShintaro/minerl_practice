@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--nfe", type=int, default=100, help="Number of Function Evaluations")
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--results_dir", type=Path, default="results")
-    parser.add_argument("--steps", type=int, default=100_000)
+    parser.add_argument("--limit_steps", type=int, default=100_000)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser.parse_args()
 
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     )
 
     # Variables for monitoring/logging purposes:
-    limit_steps = args.steps
+    limit_steps = args.limit_steps
     train_steps = 0
     log_steps = 0
     running_loss = 0
@@ -103,8 +103,8 @@ if __name__ == "__main__":
     loss_image_ave = 0
     validate_period = 1000  # 1000ステップごとに
     validate_num = 10  # 10ステップ出力する
-    ckpt_every = args.steps // 10
-    log_every = max(args.steps // 200, 1)
+    ckpt_every = limit_steps // 10
+    log_every = max(limit_steps // 200, 1)
     logger.info(f"{ckpt_every=}, {log_every=}")
 
     save_ckpt(model, ema, opt, args, train_steps)
