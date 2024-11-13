@@ -32,10 +32,6 @@ from utils import (
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-#################################################################################
-#                             Training Helper Functions                         #
-#################################################################################
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -48,32 +44,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--nfe", type=int, default=100, help="Number of Function Evaluations")
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--results_dir", type=Path, default="results")
-    parser.add_argument("--seq_len", type=int, default=1)
     parser.add_argument("--steps", type=int, default=100_000)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser.parse_args()
 
 
-def create_logger(logging_dir: str) -> logging.Logger:
-    """Create a logger that writes to a log file and stdout."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="[\033[34m%(asctime)s\033[0m] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[logging.StreamHandler(), logging.FileHandler(f"{logging_dir}/log.txt")],
-    )
-    return logging.getLogger(__name__)
-
-
-#################################################################################
-#                                  Training Loop                                #
-#################################################################################
-
-
 if __name__ == "__main__":
-    """Trains a new DiT model."""
-    assert torch.cuda.is_available(), "Training currently requires at least one GPU."
-
     args = parse_args()
 
     device = 0
@@ -82,21 +58,25 @@ if __name__ == "__main__":
     torch.cuda.set_device(device)
     print(f"Starting seed={seed}.")
 
-    # 1000ステップごとに10ステップを出力する
-    validate_period = 1000
-    validate_num = 10
-
     # Setup an experiment folder:
     results_dir = args.results_dir
     results_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir = results_dir / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    logger = create_logger(results_dir)
-    logger.info(f"Experiment directory created at {results_dir}")
     pr_save_dir = results_dir / "predict"
     pr_save_dir.mkdir(parents=True, exist_ok=True)
     gt_save_dir = results_dir / "gt"
     gt_save_dir.mkdir(parents=True, exist_ok=True)
+
+    # Set up logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[\033[34m%(asctime)s\033[0m] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[logging.StreamHandler(), logging.FileHandler(f"{results_dir}/log.txt")],
+    )
+    logger = logging.getLogger(__name__)
+    logger.info(f"Experiment directory created at {results_dir}")
 
     # Create model:
     image_size = args.image_size
@@ -117,6 +97,9 @@ if __name__ == "__main__":
     model = model.to(device)
     vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
     logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
+    update_ema(ema, model, decay=0)  # Ensure EMA is initialized with synced weights
+    ema.eval()
+    logger.info("Finish setup ema")
 
     # Setup optimizer
     opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=args.weight_decay)
@@ -124,7 +107,7 @@ if __name__ == "__main__":
         opt.load_state_dict(ckpt["opt"])
 
     # Setup data
-    dataset = MineRLDataset(args.data_path, image_size=image_size, seq_len=args.seq_len)
+    dataset = MineRLDataset(args.data_path, image_size=image_size, seq_len=1)
     logger.info(f"Train Dataset contains {len(dataset):,} images ({args.data_path})")
 
     train_loader = DataLoader(
@@ -136,11 +119,6 @@ if __name__ == "__main__":
         drop_last=True,
     )
 
-    # Prepare models for training:
-    update_ema(ema, model, decay=0)  # Ensure EMA is initialized with synced weights
-    ema.eval()
-    logger.info("Finish setup ema")
-
     # Variables for monitoring/logging purposes:
     limit_steps = args.steps
     train_steps = 0
@@ -149,7 +127,8 @@ if __name__ == "__main__":
     epoch = 0
     start_time = time()
     loss_image_ave = 0
-
+    validate_period = 1000  # 1000ステップごとに
+    validate_num = 10  # 10ステップ出力する
     ckpt_every = args.steps // 10
     log_every = max(args.steps // 200, 1)
     logger.info(f"{ckpt_every=}, {log_every=}")
