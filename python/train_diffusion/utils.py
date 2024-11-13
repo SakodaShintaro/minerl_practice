@@ -2,10 +2,12 @@
 
 import argparse
 from collections import OrderedDict
+from copy import deepcopy
 from shutil import rmtree
 
 import torch
 from diffusers.models import AutoencoderKL
+from models import DiT_models
 from torchvision.utils import save_image
 
 
@@ -23,6 +25,38 @@ def update_ema(ema_model: torch.nn.Module, model: torch.nn.Module, decay: float 
 
     for name, param in model_params.items():
         ema_params[name].mul_(decay).add_(param.data, alpha=1 - decay)
+
+
+def create_models(
+    args: argparse.Namespace,
+    device: int,
+) -> tuple[torch.nn.Module, torch.nn.Module, AutoencoderKL, torch.optim.Optimizer]:
+    # Create model:
+    image_size = args.image_size
+    assert image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
+    latent_size = image_size // 8
+    ckpt = torch.load(args.ckpt) if args.ckpt is not None else None
+    model = DiT_models[args.model](
+        input_size=(latent_size, latent_size),
+        learn_sigma=False,
+    )
+    if ckpt is not None:
+        model.load_state_dict(ckpt["model"])
+    # Note that parameter initialization is done within the DiT constructor
+    ema = deepcopy(model).to(device)  # Create an EMA of the model for use after training
+    if ckpt is not None:
+        ema.load_state_dict(ckpt["ema"])
+    requires_grad(ema, flag=False)
+    model = model.to(device)
+    vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
+    update_ema(ema, model, decay=0)  # Ensure EMA is initialized with synced weights
+    ema.eval()
+
+    # Setup optimizer
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=args.weight_decay)
+    if ckpt is not None:
+        opt.load_state_dict(ckpt["opt"])
+    return model, ema, vae, opt
 
 
 def save_image_t(image: torch.Tensor, path: str) -> None:

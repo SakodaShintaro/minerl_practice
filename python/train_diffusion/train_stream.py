@@ -8,19 +8,17 @@
 
 import argparse
 import logging
-from copy import deepcopy
 from pathlib import Path
 from time import time
 
 import pandas as pd
 import torch
-from diffusers.models import AutoencoderKL
 from minerl_dataset import MineRLDataset
 from models import DiT_models
 from torch.utils.data import DataLoader
 from utils import (
+    create_models,
     loss_flow_matching,
-    requires_grad,
     sample_images_by_flow_matching,
     save_ckpt,
     save_image_t,
@@ -79,35 +77,11 @@ if __name__ == "__main__":
     logger.info(f"Experiment directory created at {results_dir}")
 
     # Create model:
-    image_size = args.image_size
-    assert image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
-    latent_size = image_size // 8
-    ckpt = torch.load(args.ckpt) if args.ckpt is not None else None
-    model = DiT_models[args.model](
-        input_size=(latent_size, latent_size),
-        learn_sigma=False,
-    )
-    if ckpt is not None:
-        model.load_state_dict(ckpt["model"])
-    # Note that parameter initialization is done within the DiT constructor
-    ema = deepcopy(model).to(device)  # Create an EMA of the model for use after training
-    if ckpt is not None:
-        ema.load_state_dict(ckpt["ema"])
-    requires_grad(ema, flag=False)
-    model = model.to(device)
-    vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
+    model, ema, vae, opt = create_models(args, device)
     logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
-    update_ema(ema, model, decay=0)  # Ensure EMA is initialized with synced weights
-    ema.eval()
-    logger.info("Finish setup ema")
-
-    # Setup optimizer
-    opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=args.weight_decay)
-    if ckpt is not None:
-        opt.load_state_dict(ckpt["opt"])
 
     # Setup data
-    dataset = MineRLDataset(args.data_path, image_size=image_size, seq_len=1)
+    dataset = MineRLDataset(args.data_path, image_size=args.image_size, seq_len=1)
     logger.info(f"Train Dataset contains {len(dataset):,} images ({args.data_path})")
 
     train_loader = DataLoader(
