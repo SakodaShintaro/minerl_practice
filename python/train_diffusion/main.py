@@ -21,6 +21,7 @@ from utils import (
     save_ckpt,
     save_image_t,
     second_to_str,
+    update_ema,
 )
 
 
@@ -96,7 +97,7 @@ if __name__ == "__main__":
     env = MockMineRL() if args.use_mock else gym.make("MineRLObtainDiamondShovel-v0")
     env.reset()
     done = False
-    GAMMA = 0.99
+    GAMMA = 0.9
 
     image_size = args.image_size
     transform = transforms.Compose(
@@ -107,7 +108,10 @@ if __name__ == "__main__":
         ],
     )
 
-    while epoch < 100:
+    with torch.no_grad():
+        eligibility_traces = [torch.zeros_like(p, requires_grad=False) for p in model.parameters()]
+    torch.autograd.set_detect_anomaly(True)
+    while True:
         env.reset()
         done = False
         epoch += 1
@@ -125,10 +129,15 @@ if __name__ == "__main__":
             # (2) value
             curr_value = model.value(feature)
 
-            # step
+            # env step
             obs, reward, done, _ = env.step(action_dict)
+            env.render()
             obs = transform(Image.fromarray(obs["pov"]))
-            curr_image = obs.unsqueeze(0).to(device)
+            image = obs.unsqueeze(0).to(device)
+            with torch.no_grad():
+                # Map input images to latent space + normalize latents:
+                # The shape is [1, 4, h // 8, w // 8]
+                latent_image = vae.encode(image).latent_dist.sample().mul_(0.18215)
 
             # compare predict image and actual image
             if train_steps % VALIDATE_EVERY < VALIDATE_NUM:
@@ -136,36 +145,62 @@ if __name__ == "__main__":
                     valid_loss = 0
                 pred_image = sample_images_by_flow_matching(model, feature, vae, args)
                 save_image_t(pred_image, pr_save_dir / f"{train_steps:08d}.png")
-                save_image_t(curr_image, gt_save_dir / f"{train_steps:08d}.png")
-                diff = pred_image - curr_image
+                save_image_t(image, gt_save_dir / f"{train_steps:08d}.png")
+                diff = pred_image - image
                 loss_image = torch.mean(torch.square(diff))
                 valid_loss += loss_image.item() / VALIDATE_NUM
 
+            # flow matching
+            loss_f = loss_flow_matching(model, latent_image, feature)
+            opt.zero_grad()
+            loss_f.backward()
+            opt.step()
+            update_ema(ema, model)
+
             # model step
-            curr_image = vae.encode(curr_image).latent_dist.sample().mul_(0.18215).detach()
             curr_action = action_dict_to_tensor(action_dict).unsqueeze(0).to(device)
-            print(f"{curr_image.shape=}, {curr_action.shape=}")
+            print(f"{latent_image.shape=}, {curr_action.shape=}")
             feature, conv_state, ssm_state = model.step(
-                curr_image,
+                latent_image,
                 curr_action,
                 conv_state,
                 ssm_state,
             )
 
-            # flow matching
-            loss_f = loss_flow_matching(model, curr_image, feature)
-
-            # calculate value
-            next_value = model.value(feature)
-
             # calculate temporal difference
-            target = (reward + GAMMA * next_value).detach()
-            delta = target - curr_value
+            with torch.no_grad():
+                next_value = model.value(feature)
+                target = (reward + GAMMA * next_value)
+                delta = target - curr_value
 
-            loss_v = delta.pow(2).mean()
-            loss_p = (-log_prob * delta.detach()).mean()
-            loss = loss_v + loss_p
+            # loss_v = curr_value.mean()
+            # loss_p = (-log_prob).mean()
+            # loss = loss_v + loss_p
 
+            # update eligibility traces
+            # opt.zero_grad()
+            # loss.backward(retain_graph=True)
+            # with torch.no_grad():
+            #     for p, e in zip(model.parameters(), eligibility_traces):
+            #         if p.grad is None:
+            #             continue
+            #         e.mul_(GAMMA).add_(p.grad)
+
+            # backward f
+            # opt.zero_grad()
+            # loss_f.backward()
+
+            # add eligibility traces
+            # with torch.no_grad():
+            #     for p, e in zip(model.parameters(), eligibility_traces):
+            #         if p.grad is None:
+            #             continue
+            #         p.grad.add_(args.lr * delta.item() * e)
+
+            # update
+            # opt.step()
+
+            train_loss += loss_f.item()
             if train_steps % log_every == 0:
                 # Measure training speed:
                 end_time = time()
@@ -196,12 +231,11 @@ if __name__ == "__main__":
                 df.to_csv(results_dir / "log.tsv", index=False, sep="\t")
                 train_loss = 0
 
-            # update
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
+            # Save DiT checkpoint:
+            if train_steps % ckpt_every == 0:
+                save_ckpt(model, ema, opt, args, train_steps)
+                model.train()
 
-            env.render()
             if train_steps >= limit_steps:
                 break
 
