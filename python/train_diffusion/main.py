@@ -159,7 +159,6 @@ if __name__ == "__main__":
 
             # model step
             curr_action = action_dict_to_tensor(action_dict).unsqueeze(0).to(device)
-            print(f"{latent_image.shape=}, {curr_action.shape=}")
             feature, conv_state, ssm_state = model.step(
                 latent_image,
                 curr_action,
