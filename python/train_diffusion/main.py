@@ -37,6 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--use_mock", action="store_true")
+    parser.add_argument("--use_et", action="store_true")
     return parser.parse_args()
 
 
@@ -108,9 +109,10 @@ if __name__ == "__main__":
         ],
     )
 
-    with torch.no_grad():
-        eligibility_traces = [torch.zeros_like(p, requires_grad=False) for p in model.parameters()]
-    torch.autograd.set_detect_anomaly(True)
+    if args.use_et:
+        with torch.no_grad():
+            eligibility_traces = [torch.zeros_like(p, requires_grad=False) for p in model.parameters()]
+
     while True:
         env.reset()
         done = False
@@ -153,9 +155,14 @@ if __name__ == "__main__":
             # flow matching
             loss_f = loss_flow_matching(model, latent_image, feature)
             opt.zero_grad()
-            loss_f.backward()
-            opt.step()
-            update_ema(ema, model)
+            if args.use_et:
+                loss_f.backward(retain_graph=True)
+                with torch.no_grad():
+                    tmp_grad = [p.grad for p in model.parameters()]
+            else:
+                loss_f.backward()
+                opt.step()
+                update_ema(ema, model)
 
             # model step
             curr_action = action_dict_to_tensor(action_dict).unsqueeze(0).to(device)
@@ -172,32 +179,26 @@ if __name__ == "__main__":
                 target = (reward + GAMMA * next_value)
                 delta = target - curr_value
 
-            # loss_v = curr_value.mean()
-            # loss_p = (-log_prob).mean()
-            # loss = loss_v + loss_p
-
             # update eligibility traces
-            # opt.zero_grad()
-            # loss.backward(retain_graph=True)
-            # with torch.no_grad():
-            #     for p, e in zip(model.parameters(), eligibility_traces):
-            #         if p.grad is None:
-            #             continue
-            #         e.mul_(GAMMA).add_(p.grad)
+            if args.use_et:
+                loss_v = curr_value.mean()
+                loss_p = (-log_prob).mean()
+                loss = (loss_v + loss_p)
 
-            # backward f
-            # opt.zero_grad()
-            # loss_f.backward()
+                opt.zero_grad()
+                loss.backward()
+                with torch.no_grad():
+                    for p, e, g in zip(model.parameters(), eligibility_traces, tmp_grad):
+                        if p.grad is None:
+                            continue
+                        e.mul_(GAMMA).add_(p.grad)
+                        update = delta.item() * e
+                        if g is not None:
+                            update += g
+                        p.data -= args.lr * update
 
-            # add eligibility traces
-            # with torch.no_grad():
-            #     for p, e in zip(model.parameters(), eligibility_traces):
-            #         if p.grad is None:
-            #             continue
-            #         p.grad.add_(args.lr * delta.item() * e)
-
-            # update
-            # opt.step()
+                # update
+                update_ema(ema, model)
 
             train_loss += loss_f.item()
             if train_steps % log_every == 0:
