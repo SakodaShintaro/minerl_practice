@@ -13,7 +13,7 @@ from time import time
 
 import pandas as pd
 import torch
-from minerl_dataset import MineRLDataset
+from minerl_dataset import MineRLDataset, action_tensor_to_dict
 from models import DiT_models
 from torch.utils.data import DataLoader
 from utils import (
@@ -117,22 +117,23 @@ if __name__ == "__main__":
         for batch in train_loader:
             train_steps += 1
 
-            # (1) 画像tが得られる
+            # current inference
+            # (1) action
+            action, log_prob, entropy = model.policy(feature)
+            action_dict = action_tensor_to_dict(action)
+
+            # (2) value
+            curr_value = model.value(feature)
+
+            # env step
             image, action = batch
-            image = image.to(device)  # [1, 1, c, h, w]
-            action = action.to(device)  # [1, 1, action_dim]
-            image_gt = image[:, 0]
-            b, seq, c, h, w = image.shape
-            hidden_h = h // 8
-            hidden_w = w // 8
+            image, action = image[:, 0], action[:, 0]
+            image = image.to(device)  # [1, c, h, w]
+            action = action.to(device)  # [1, action_dim]
             with torch.no_grad():
                 # Map input images to latent space + normalize latents:
-                image = image.view(b * seq, c, h, w)
-                image = vae.encode(image).latent_dist.sample().mul_(0.18215)
-                image = image.view(b, seq, 4, hidden_h, hidden_w)
-
-            curr_image = image[0]  # [1, 4, hidden_h, hidden_w]
-            curr_action = action[0]  # [1, action_dim]
+                # The shape is [1, 4, h // 8, w // 8]
+                latent_image = vae.encode(image).latent_dist.sample().mul_(0.18215)
 
             # validate
             if train_steps % VALIDATE_EVERY < VALIDATE_NUM:
@@ -140,22 +141,22 @@ if __name__ == "__main__":
                     valid_loss = 0
                 pred_image = sample_images_by_flow_matching(model, feature, vae, args)
                 save_image_t(pred_image, pr_save_dir / f"{train_steps:08d}.png")
-                save_image_t(image_gt, gt_save_dir / f"{train_steps:08d}.png")
-                diff = pred_image - image_gt
+                save_image_t(image, gt_save_dir / f"{train_steps:08d}.png")
+                diff = pred_image - image
                 loss_image = torch.mean(torch.square(diff))
                 valid_loss += loss_image.item() / VALIDATE_NUM
 
-            # (2) flow matchingの学習
-            loss = loss_flow_matching(model, curr_image, feature)
+            # flow matchingの学習
+            loss = loss_flow_matching(model, latent_image, feature)
             opt.zero_grad()
             loss.backward()
             opt.step()
             update_ema(ema, model)
 
-            # (3) Update state
+            # Update state
             feature, conv_state, ssm_state = model.step(
-                curr_image,
-                curr_action,
+                latent_image,
+                action,
                 conv_state,
                 ssm_state,
             )
