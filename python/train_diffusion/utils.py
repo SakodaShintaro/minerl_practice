@@ -53,7 +53,7 @@ def create_models(
     ema.eval()
 
     # Setup optimizer
-    opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=args.weight_decay)
+    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     if ckpt is not None:
         opt.load_state_dict(ckpt["opt"])
     return model, ema, vae, opt
