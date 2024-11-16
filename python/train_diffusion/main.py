@@ -111,7 +111,9 @@ if __name__ == "__main__":
 
     if args.use_et:
         with torch.no_grad():
-            eligibility_traces = [torch.zeros_like(p, requires_grad=False) for p in model.parameters()]
+            eligibility_traces = [
+                torch.zeros_like(p, requires_grad=False) for p in model.parameters()
+            ]
 
     while True:
         env.reset()
@@ -176,14 +178,14 @@ if __name__ == "__main__":
             # calculate temporal difference
             with torch.no_grad():
                 next_value = model.value(feature)
-                target = (reward + GAMMA * next_value)
+                target = reward + GAMMA * next_value
                 delta = target - curr_value
 
             # update eligibility traces
             if args.use_et:
                 loss_v = curr_value.mean()
                 loss_p = (-log_prob).mean()
-                loss = (loss_v + loss_p)
+                loss = loss_v + loss_p
 
                 opt.zero_grad()
                 loss.backward()
