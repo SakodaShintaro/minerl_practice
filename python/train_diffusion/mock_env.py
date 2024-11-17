@@ -63,7 +63,7 @@ class MockMineRL(gym.Env):
         }
 
         self.step_num += 1
-        terminal = self.step_num >= 100
+        terminal = self.step_num >= 1000000
 
         return obs, 0.0, terminal, {}
 
