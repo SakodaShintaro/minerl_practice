@@ -85,6 +85,7 @@ if __name__ == "__main__":
     ckpt_every = limit_steps // 10
     log_every = max(limit_steps // 200, 1)
     logger.info(f"{ckpt_every=}, {log_every=}")
+    sum_reward = 0
 
     start_time = time()
 
@@ -138,6 +139,7 @@ if __name__ == "__main__":
             env.render()
             obs = transform(Image.fromarray(obs["pov"]))
             image = obs.unsqueeze(0).to(device)
+            sum_reward += reward
             with torch.no_grad():
                 # Map input images to latent space + normalize latents:
                 # The shape is [1, 4, h // 8, w // 8]
@@ -212,13 +214,15 @@ if __name__ == "__main__":
                 remaining_time_str = second_to_str(remaining_time)
 
                 avg_loss = train_loss / log_every
+                ave_reward = sum_reward / log_every
                 logger.info(
                     f"remaining_time={remaining_time_str} "
                     f"elapsed_time={elapsed_time_str} "
                     f"epoch={epoch:04d} "
                     f"step={train_steps:08d} "
                     f"loss={avg_loss:.4f} "
-                    f"loss_image={valid_loss:.4f}",
+                    f"loss_image={valid_loss:.4f} "
+                    f"ave_reward={ave_reward:.4f}",
                 )
                 log_dict_list.append(
                     {
@@ -226,12 +230,14 @@ if __name__ == "__main__":
                         "epoch": epoch,
                         "step": train_steps,
                         "loss": avg_loss,
-                        "loss_imag": valid_loss,
+                        "loss_image": valid_loss,
+                        "ave_reward": ave_reward,
                     },
                 )
                 df = pd.DataFrame(log_dict_list)
                 df.to_csv(results_dir / "log.tsv", index=False, sep="\t")
                 train_loss = 0
+                sum_reward = 0
 
             # Save DiT checkpoint:
             if train_steps % ckpt_every == 0:
