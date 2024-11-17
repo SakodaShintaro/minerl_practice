@@ -13,3 +13,4 @@ python3 main.py \
   --results_dir=${result_dir}
 
 python3 plot_images.py ${result_dir}
+python3 plot_loss_from_tsv.py ${result_dir}/log.tsv

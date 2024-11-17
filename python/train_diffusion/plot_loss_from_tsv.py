@@ -23,6 +23,7 @@ if __name__ == "__main__":
     plt.plot(df["step"], df["loss"])
     plt.xlabel("Step")
     plt.ylabel("Loss")
+    plt.grid()
     save_path = log_path.parent / "step_loss.png"
     plt.savefig(save_path, bbox_inches="tight", pad_inches=0.05)
     print(f"Save plot to {save_path}")
