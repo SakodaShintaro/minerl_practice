@@ -38,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--use_mock", action="store_true")
     parser.add_argument("--use_et", action="store_true")
+    parser.add_argument("--use_random_action", action="store_true", default=True)
     return parser.parse_args()
 
 
@@ -130,6 +131,11 @@ if __name__ == "__main__":
             # (1) action
             action, log_prob, entropy = model.policy(feature)
             action_dict = action_tensor_to_dict(action)
+            if args.use_random_action:
+                action_dict = env.action_space.sample()
+                action_dict["ESC"] = 0
+                action_dict["camera"][0] /= 2
+                action_dict["camera"][1] /= 2
 
             # (2) value
             curr_value = model.value(feature)
