@@ -244,6 +244,7 @@ class DiT(nn.Module):
 
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
+        self.dt_embedder = TimestepEmbedder(hidden_size)
         self.action_embedder = nn.Linear(24, hidden_size)
         num_patches = self.x_embedder.num_patches
         # Will use fixed sin-cos embedding:
@@ -294,6 +295,8 @@ class DiT(nn.Module):
         # Initialize timestep embedding MLP:
         nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
+        nn.init.normal_(self.dt_embedder.mlp[0].weight, std=0.02)
+        nn.init.normal_(self.dt_embedder.mlp[2].weight, std=0.02)
 
         # Zero-out adaLN modulation layers in DiT blocks:
         for block in self.blocks:
@@ -387,7 +390,7 @@ class DiT(nn.Module):
 
         return self.mamba.step(curr_cond, conv_state, ssm_state)
 
-    def predict(self, x, t, feature):
+    def predict(self, x, t, dt, feature):
         """
         Predict image by using the current feature.
         x: (1, C, H, W) tensor of spatial inputs (latent representations of images)
@@ -396,8 +399,9 @@ class DiT(nn.Module):
         """
         x = self.x_embedder(x) + self.pos_embed  # (1, L, D), where L = H * W / patch_size ** 2
         t = self.t_embedder(t)  # (1, D)
+        dt = self.dt_embedder(dt)  # (1, D)
         feature = feature.squeeze(1)  # (1, D)
-        c = t + feature  # (1, D)
+        c = t + dt + feature  # (1, D)
         for block in self.blocks:
             x = block(x, c)
         x = self.final_layer(x, c)
