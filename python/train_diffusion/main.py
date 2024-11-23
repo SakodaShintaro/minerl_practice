@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
             # model step
             curr_action = action_dict_to_tensor(action_dict).unsqueeze(0).to(device)
-            feature, conv_state, ssm_state = model.step(
+            new_feature, conv_state, ssm_state = model.step(
                 latent_image,
                 curr_action,
                 conv_state,
@@ -193,7 +193,7 @@ if __name__ == "__main__":
             if args.use_et:
                 loss_v = curr_value.mean()
                 loss_p = (-log_prob).mean()
-                loss = loss_v + loss_p
+                loss = 0.001 * (loss_v + loss_p)
 
                 opt.zero_grad()
                 loss.backward()
@@ -209,6 +209,8 @@ if __name__ == "__main__":
 
                 # update
                 update_ema(ema, model)
+
+            feature = new_feature
 
             train_loss += loss_f.item()
             if train_steps % log_every == 0:
