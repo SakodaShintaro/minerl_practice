@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cfg_scale", type=float, default=1.0)
     parser.add_argument("--image_size", type=int, default=32)
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
-    parser.add_argument("--nfe", type=int, default=64, help="Number of Function Evaluations")
+    parser.add_argument("--nfe", type=int, default=4, help="Number of Function Evaluations")
     parser.add_argument("--results_dir", type=Path, default="../../train_result/stream_rl")
     parser.add_argument("--limit_steps", type=int, default=100_000)
     parser.add_argument("--lr", type=float, default=1e-4)

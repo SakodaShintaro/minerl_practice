@@ -28,7 +28,7 @@ torch.backends.cudnn.allow_tf32 = True
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("ckpt", type=Path)
-    parser.add_argument("--nfe", type=int, default=64, help="Number of Function Evaluations")
+    parser.add_argument("--nfe", type=int, default=4, help="Number of Function Evaluations")
     return parser.parse_args()
 
 
