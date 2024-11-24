@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
     parser.add_argument("--nfe", type=int, default=4, help="Number of Function Evaluations")
     parser.add_argument("--results_dir", type=Path, default="../../train_result/stream_rl")
-    parser.add_argument("--limit_steps", type=int, default=100_000)
+    parser.add_argument("--limit_steps", type=int, default=1_000_000)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--use_mock", action="store_true")
@@ -153,15 +153,13 @@ if __name__ == "__main__":
                 latent_image = vae.encode(image).latent_dist.sample().mul_(0.18215)
 
             # compare predict image and actual image
+            pred_image = sample_images_by_flow_matching(model, feature, vae, args)
+            diff = pred_image - image
+            loss_image = torch.mean(torch.square(diff))
+            valid_loss += loss_image.item()
             if train_steps % VALIDATE_EVERY < VALIDATE_NUM:
-                if train_steps % VALIDATE_EVERY == 0:
-                    valid_loss = 0
-                pred_image = sample_images_by_flow_matching(model, feature, vae, args)
                 save_image_t(pred_image, pr_save_dir / f"{train_steps:08d}.png")
                 save_image_t(image, gt_save_dir / f"{train_steps:08d}.png")
-                diff = pred_image - image
-                loss_image = torch.mean(torch.square(diff))
-                valid_loss += loss_image.item() / VALIDATE_NUM
 
             # flow matching
             loss_fm, loss_sc = loss_flow_matching(model, latent_image, feature)
@@ -226,6 +224,7 @@ if __name__ == "__main__":
 
                 train_loss_fm /= log_every
                 train_loss_sc /= log_every
+                valid_loss /= log_every
                 ave_reward = sum_reward / log_every
                 logger.info(
                     f"remaining_time={remaining_time_str} "
@@ -252,6 +251,7 @@ if __name__ == "__main__":
                 df.to_csv(results_dir / "log.tsv", index=False, sep="\t")
                 train_loss_fm = 0
                 train_loss_sc = 0
+                valid_loss = 0
                 sum_reward = 0
 
             # Save DiT checkpoint:
