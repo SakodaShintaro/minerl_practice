@@ -152,7 +152,7 @@ if __name__ == "__main__":
 
             # flow matchingの学習
             loss_fm, loss_sc = loss_flow_matching(model, latent_image, feature)
-            loss = loss_fm + loss_sc
+            loss = loss_fm + 3.0 * loss_sc
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -202,7 +202,7 @@ if __name__ == "__main__":
                         "step": train_steps,
                         "loss_fm": train_loss_fm,
                         "loss_sc": train_loss_sc,
-                        "loss_imag": valid_loss,
+                        "loss_image": valid_loss,
                     },
                 )
                 df = pd.DataFrame(log_dict_list)

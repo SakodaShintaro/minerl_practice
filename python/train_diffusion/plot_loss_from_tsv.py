@@ -23,14 +23,19 @@ if __name__ == "__main__":
     # デフォルトのcmapを使用
     cmap = plt.get_cmap("tab10")
 
-    plt.subplot(2, 1, 1)
+    plt.subplot(3, 1, 1)
     plt.plot(df["step"], df["loss_fm"], label="flow matching loss", color=cmap(0))
     plt.ylabel("Flow Matching Loss")
     plt.grid()
 
-    plt.subplot(2, 1, 2)
+    plt.subplot(3, 1, 2)
     plt.plot(df["step"], df["loss_sc"], label="shortcut loss", color=cmap(1))
     plt.ylabel("Shortcut Loss")
+    plt.grid()
+
+    plt.subplot(3, 1, 3)
+    plt.plot(df["step"], df["loss_image"], label="image loss", color=cmap(2))
+    plt.ylabel("Image Loss")
     plt.grid()
 
     plt.xlabel("Step")
