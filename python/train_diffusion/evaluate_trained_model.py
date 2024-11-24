@@ -28,7 +28,7 @@ torch.backends.cudnn.allow_tf32 = True
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("ckpt", type=Path)
-    parser.add_argument("--nfe", type=int, default=100, help="Number of Function Evaluations")
+    parser.add_argument("--nfe", type=int, default=64, help="Number of Function Evaluations")
     return parser.parse_args()
 
 
@@ -54,7 +54,7 @@ if __name__ == "__main__":
     # Setup an experiment folder:
     results_dir = args.results_dir
     assert results_dir.exists(), f"{results_dir} does not exist."
-    pr_save_dir = results_dir / "eval_predict"
+    pr_save_dir = results_dir / f"eval_predict_{nfe}"
     pr_save_dir.mkdir(parents=True, exist_ok=True)
     gt_save_dir = results_dir / "eval_gt"
     gt_save_dir.mkdir(parents=True, exist_ok=True)
