@@ -79,7 +79,8 @@ if __name__ == "__main__":
     limit_steps = args.limit_steps
     epoch = 0
     train_steps = 0
-    train_loss = 0
+    train_loss_fm = 0
+    train_loss_sc = 0
     valid_loss = 0
     VALIDATE_EVERY = 1000  # 1000ステップごとに
     VALIDATE_NUM = 10  # 10ステップ出力する
@@ -163,14 +164,15 @@ if __name__ == "__main__":
                 valid_loss += loss_image.item() / VALIDATE_NUM
 
             # flow matching
-            loss_f = loss_flow_matching(model, latent_image, feature)
+            loss_fm, loss_sc = loss_flow_matching(model, latent_image, feature)
+            loss_wm = loss_fm + loss_sc
             opt.zero_grad()
             if args.use_et:
-                loss_f.backward(retain_graph=True)
+                loss_wm.backward(retain_graph=True)
                 with torch.no_grad():
                     tmp_grad = [p.grad for p in model.parameters()]
             else:
-                loss_f.backward()
+                loss_wm.backward()
                 opt.step()
                 update_ema(ema, model)
 
@@ -212,7 +214,8 @@ if __name__ == "__main__":
 
             feature = new_feature
 
-            train_loss += loss_f.item()
+            train_loss_fm += loss_fm.item()
+            train_loss_sc += loss_sc.item()
             if train_steps % log_every == 0:
                 # Measure training speed:
                 end_time = time()
@@ -221,14 +224,16 @@ if __name__ == "__main__":
                 elapsed_time_str = second_to_str(elapsed_time)
                 remaining_time_str = second_to_str(remaining_time)
 
-                avg_loss = train_loss / log_every
+                train_loss_fm /= log_every
+                train_loss_sc /= log_every
                 ave_reward = sum_reward / log_every
                 logger.info(
                     f"remaining_time={remaining_time_str} "
                     f"elapsed_time={elapsed_time_str} "
                     f"epoch={epoch:04d} "
                     f"step={train_steps:08d} "
-                    f"loss={avg_loss:.4f} "
+                    f"loss_fm={train_loss_fm:.4f} "
+                    f"loss_sc={train_loss_sc:.4f} "
                     f"loss_image={valid_loss:.4f} "
                     f"ave_reward={ave_reward:.4f}",
                 )
@@ -237,14 +242,16 @@ if __name__ == "__main__":
                         "elapsed_time": elapsed_time,
                         "epoch": epoch,
                         "step": train_steps,
-                        "loss": avg_loss,
+                        "loss_fm": train_loss_fm,
+                        "loss_sc": train_loss_sc,
                         "loss_image": valid_loss,
                         "ave_reward": ave_reward,
                     },
                 )
                 df = pd.DataFrame(log_dict_list)
                 df.to_csv(results_dir / "log.tsv", index=False, sep="\t")
-                train_loss = 0
+                train_loss_fm = 0
+                train_loss_sc = 0
                 sum_reward = 0
 
             # Save DiT checkpoint:

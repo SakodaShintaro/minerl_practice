@@ -20,7 +20,8 @@ if __name__ == "__main__":
 
     print(df.head())
 
-    plt.plot(df["step"], df["loss"])
+    plt.plot(df["step"], df["loss_fm"], label="Flow Matching Loss")
+    plt.plot(df["step"], df["loss_sc"], label="Shortcut Loss")
     plt.xlabel("Step")
     plt.ylabel("Loss")
     plt.grid()

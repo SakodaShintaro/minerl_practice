@@ -102,7 +102,7 @@ def loss_flow_matching(
     model: torch.nn.Module,
     curr_image: torch.Tensor,
     feature: torch.Tensor,
-) -> torch.Tensor:
+) -> tuple[torch.Tensor, torch.Tensor]:
     device = model.parameters().__next__().device
 
     # loss1 : Flow matching loss
@@ -115,9 +115,10 @@ def loss_flow_matching(
     dt = torch.zeros_like(t)
     out = model.predict(perturbed_data, t * 999, dt, feature)
     target = curr_image - noise
-    loss1 = torch.mean(torch.square(out - target))
+    loss_flow_matching = torch.mean(torch.square(out - target))
 
     # loss2 : One Step Diffusion via Shortcut Models
+    # ref) https://arxiv.org/abs/2410.12557
     MAX_LOG_STEP = 8  # noqa: N806
     random_step = random.randint(1, MAX_LOG_STEP)
     random_pow_minus2 = 2 ** (-random_step)
@@ -135,9 +136,9 @@ def loss_flow_matching(
 
     v_target = ((v_t + v_next) / 2).detach()
     v_curr = model.predict(curr_image, random_t * 999, 2 * random_pow_minus2 * 999, feature)
-    loss2 = torch.mean(torch.square(v_target - v_curr))
+    loss_shortcut = torch.mean(torch.square(v_target - v_curr))
 
-    return loss1 + 0.0 * loss2
+    return loss_flow_matching, loss_shortcut
 
 
 def sample_images_by_flow_matching(
