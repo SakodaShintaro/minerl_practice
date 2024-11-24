@@ -16,3 +16,9 @@ python3 train_stream.py \
 
 python3 plot_images.py ${result_dir}
 python3 plot_loss_from_tsv.py ${result_dir}/log.tsv
+
+python3 evaluate_trained_model.py ${result_dir}/checkpoints/00100000.pt --nfe 64
+python3 evaluate_trained_model.py ${result_dir}/checkpoints/00100000.pt --nfe 16
+python3 evaluate_trained_model.py ${result_dir}/checkpoints/00100000.pt --nfe 4
+python3 evaluate_trained_model.py ${result_dir}/checkpoints/00100000.pt --nfe 1
+python3 plot_images_each_nfe.py ${result_dir}
