@@ -9,12 +9,16 @@ import cv2
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("result_dir", type=Path)
+    parser.add_argument("--plot_interval", type=int, default=1000)
+    parser.add_argument("--plot_num", type=int, default=10)
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
     result_dir = args.result_dir
+    plot_interval = args.plot_interval
+    plot_num = args.plot_num
 
     dir_gt = result_dir / "gt"
     dir_pred = result_dir / "predict"
@@ -29,6 +33,8 @@ if __name__ == "__main__":
     prev_id = 0
     for gt_path, pred_path in zip(gt_paths, pred_paths):
         curr_id = int(gt_path.stem)
+        if curr_id % plot_interval >= plot_num:
+            continue
         gt = cv2.imread(str(gt_path))
         pred = cv2.imread(str(pred_path))
         # 画像を横に連結

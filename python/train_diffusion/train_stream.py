@@ -105,8 +105,6 @@ if __name__ == "__main__":
     train_loss_fm = 0
     train_loss_sc = 0
     valid_loss = 0
-    VALIDATE_EVERY = 1000  # 1000ステップごとに
-    VALIDATE_NUM = 10  # 10ステップ出力する
     ckpt_every = limit_steps // 10
     log_every = max(limit_steps // 200, 1)
     logger.info(f"{ckpt_every=}, {log_every=}")
@@ -145,15 +143,12 @@ if __name__ == "__main__":
                 latent_image = vae.encode(image).latent_dist.sample().mul_(0.18215)
 
             # validate
-            if train_steps % VALIDATE_EVERY < VALIDATE_NUM:
-                if train_steps % VALIDATE_EVERY == 0:
-                    valid_loss = 0
-                pred_image = sample_images_by_flow_matching(model, feature, vae, args)
-                save_image_t(pred_image, pr_save_dir / f"{train_steps:08d}.png")
-                save_image_t(image, gt_save_dir / f"{train_steps:08d}.png")
-                diff = pred_image - image
-                loss_image = torch.mean(torch.square(diff))
-                valid_loss += loss_image.item() / VALIDATE_NUM
+            pred_image = sample_images_by_flow_matching(model, feature, vae, args)
+            save_image_t(pred_image, pr_save_dir / f"{train_steps:08d}.png")
+            save_image_t(image, gt_save_dir / f"{train_steps:08d}.png")
+            diff = pred_image - image
+            loss_image = torch.mean(torch.square(diff))
+            valid_loss += loss_image.item()
 
             # flow matchingの学習
             loss_fm, loss_sc = loss_flow_matching(model, latent_image, feature)
@@ -190,6 +185,7 @@ if __name__ == "__main__":
 
                 train_loss_fm /= log_every
                 train_loss_sc /= log_every
+                valid_loss /= log_every
                 logger.info(
                     f"remaining_time={remaining_time_str} "
                     f"elapsed_time={elapsed_time_str} "
@@ -213,6 +209,7 @@ if __name__ == "__main__":
                 df.to_csv(results_dir / "log.tsv", index=False, sep="\t")
                 train_loss_fm = 0
                 train_loss_sc = 0
+                valid_loss = 0
 
             # Save DiT checkpoint:
             if train_steps % ckpt_every == 0:
