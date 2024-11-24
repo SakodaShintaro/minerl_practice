@@ -20,11 +20,22 @@ if __name__ == "__main__":
 
     print(df.head())
 
-    plt.plot(df["step"], df["loss_fm"], label="Flow Matching Loss")
-    plt.plot(df["step"], df["loss_sc"], label="Shortcut Loss")
-    plt.xlabel("Step")
-    plt.ylabel("Loss")
+    # デフォルトのcmapを使用
+    cmap = plt.get_cmap("tab10")
+
+    plt.subplot(2, 1, 1)
+    plt.plot(df["step"], df["loss_fm"], label="flow matching loss", color=cmap(0))
+    plt.ylabel("Flow Matching Loss")
     plt.grid()
+
+    plt.subplot(2, 1, 2)
+    plt.plot(df["step"], df["loss_sc"], label="shortcut loss", color=cmap(1))
+    plt.ylabel("Shortcut Loss")
+    plt.grid()
+
+    plt.xlabel("Step")
+    plt.tight_layout()
+
     save_path = log_path.parent / "step_loss.png"
     plt.savefig(save_path, bbox_inches="tight", pad_inches=0.05)
     print(f"Save plot to {save_path}")
