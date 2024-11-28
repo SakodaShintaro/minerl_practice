@@ -13,13 +13,27 @@ import torch
 from diffusers.models import AutoencoderKL
 from PIL import Image
 import pandas as pd
+from collections import OrderedDict
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("save_root_dir", type=Path)
     parser.add_argument("--use_vae", action="store_true")
-    parser.add_argument("--select_action_interval", type=int, default=20)
+    parser.add_argument("--select_action_interval", type=int, default=40)
     return parser.parse_args()
+
+
+def fix_inv_dict(inv: OrderedDict) -> dict:
+    result = {}
+    for k, v in inv.items():
+        if v.shape == ():
+            if v > 0:
+                result[k] = int(v)
+        else:
+            print(k, v, type(v), v.shape)
+            assert False
+    return result
 
 
 if __name__ == "__main__":
@@ -35,6 +49,8 @@ if __name__ == "__main__":
     save_obs_dir.mkdir(exist_ok=True)
     save_action_dir = save_root_dir / "action"
     save_action_dir.mkdir(exist_ok=True)
+    save_inventory_dir = save_root_dir / "inventory"
+    save_inventory_dir.mkdir(exist_ok=True)
 
     if use_vae:
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -45,6 +61,7 @@ if __name__ == "__main__":
 
     env = gym.make("MineRLObtainDiamondShovel-v0")
     obs = env.reset()
+    inv = fix_inv_dict(obs["inventory"])
     obs = np.copy(obs["pov"])
     done = False
     step = 0
@@ -67,12 +84,18 @@ if __name__ == "__main__":
         Image.fromarray(obs).save(save_obs_dir / f"{step:08d}.png")
         with (save_action_dir / f"{step:08d}.json").open("w") as f:
             action_serializable = {
-                k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in action.items()
+                k: v.tolist() if isinstance(v, np.ndarray) else v
+                for k, v in action.items()
             }
             json.dump(action_serializable, f)
 
+        # save inventory
+        with (save_inventory_dir / f"{step:08d}.json").open("w") as f:
+            json.dump(inv, f)
+
         # step
         obs, reward, done, _ = env.step(action)
+        inv = fix_inv_dict(obs["inventory"])
         obs = np.copy(obs["pov"])
         step += 1
 
@@ -83,7 +106,14 @@ if __name__ == "__main__":
 
         # vae
         if use_vae:
-            x = torch.tensor(obs).permute(2, 0, 1).unsqueeze(0).float().div_(255).to(device)
+            x = (
+                torch.tensor(obs)
+                .permute(2, 0, 1)
+                .unsqueeze(0)
+                .float()
+                .div_(255)
+                .to(device)
+            )
             z = vae.encode(x).latent_dist.sample().mul_(0.18215)
             x_hat = vae.decode(z / 0.18215).sample
             obs_hat = x_hat.squeeze().permute(1, 2, 0).mul_(255).byte().cpu().numpy()
