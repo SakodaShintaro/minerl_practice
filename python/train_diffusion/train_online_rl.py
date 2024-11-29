@@ -23,6 +23,7 @@ from utils import (
     second_to_str,
     update_ema,
 )
+from collections import OrderedDict
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,6 +41,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--use_et", action="store_true")
     parser.add_argument("--use_random_action", action="store_true", default=True)
     return parser.parse_args()
+
+
+def fix_inv_dict(inv: OrderedDict) -> dict:
+    result = {}
+    total_num = 0
+    for k, v in inv.items():
+        if v.shape == ():
+            if v > 0:
+                result[k] = int(v)
+                total_num += int(v)
+        else:
+            print(k, v, type(v), v.shape)
+            assert False
+    return result, total_num
 
 
 if __name__ == "__main__":
@@ -99,7 +114,8 @@ if __name__ == "__main__":
     log_dict_list = []
 
     env = MockMineRL() if args.use_mock else gym.make("MineRLObtainDiamondShovel-v0")
-    env.reset()
+    obs = env.reset()
+    obs_inv, obs_total_num = fix_inv_dict(obs["inventory"])
     done = False
     GAMMA = 0.9
 
@@ -144,8 +160,12 @@ if __name__ == "__main__":
             # env step
             obs, reward, done, _ = env.step(action_dict)
             env.render()
-            obs = transform(Image.fromarray(obs["pov"]))
-            image = obs.unsqueeze(0).to(device)
+            curr_obs_inv, curr_obs_total_num = fix_inv_dict(obs["inventory"])
+            reward += curr_obs_total_num - obs_total_num
+            obs_inv = curr_obs_inv
+            obs_total_num = curr_obs_total_num
+            obs_pov = transform(Image.fromarray(obs["pov"]))
+            image = obs_pov.unsqueeze(0).to(device)
             sum_reward += reward
             with torch.no_grad():
                 # Map input images to latent space + normalize latents:
