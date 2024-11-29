@@ -9,8 +9,6 @@ from tqdm import tqdm
 import gym
 import minerl  # noqa: F401
 import numpy as np
-import torch
-from diffusers.models import AutoencoderKL
 from PIL import Image
 import pandas as pd
 from collections import OrderedDict
@@ -19,7 +17,6 @@ from collections import OrderedDict
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("save_root_dir", type=Path)
-    parser.add_argument("--use_vae", action="store_true")
     parser.add_argument("--select_action_interval", type=int, default=40)
     return parser.parse_args()
 
@@ -39,7 +36,6 @@ def fix_inv_dict(inv: OrderedDict) -> dict:
 if __name__ == "__main__":
     args = parse_args()
     save_root_dir = args.save_root_dir
-    use_vae = args.use_vae
     select_action_interval = args.select_action_interval
 
     logging.basicConfig(level=logging.DEBUG)
@@ -51,13 +47,6 @@ if __name__ == "__main__":
     save_action_dir.mkdir(exist_ok=True)
     save_inventory_dir = save_root_dir / "inventory"
     save_inventory_dir.mkdir(exist_ok=True)
-
-    if use_vae:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
-        vae.eval()
-        save_obs_hat_dir = save_root_dir / "obs_hat"
-        save_obs_hat_dir.mkdir(exist_ok=True)
 
     env = gym.make("MineRLObtainDiamondShovel-v0")
     obs = env.reset()
@@ -103,21 +92,6 @@ if __name__ == "__main__":
         reward_list.append(reward)
         df = pd.DataFrame(reward_list)
         df.to_csv(save_root_dir / "reward.csv")
-
-        # vae
-        if use_vae:
-            x = (
-                torch.tensor(obs)
-                .permute(2, 0, 1)
-                .unsqueeze(0)
-                .float()
-                .div_(255)
-                .to(device)
-            )
-            z = vae.encode(x).latent_dist.sample().mul_(0.18215)
-            x_hat = vae.decode(z / 0.18215).sample
-            obs_hat = x_hat.squeeze().permute(1, 2, 0).mul_(255).byte().cpu().numpy()
-            Image.fromarray(obs_hat).save(save_obs_hat_dir / f"{step:08d}.png")
 
         env.render()
 
