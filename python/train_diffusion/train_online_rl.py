@@ -231,7 +231,7 @@ if __name__ == "__main__":
                 # update
                 update_ema(ema, model)
 
-            feature = new_feature
+            feature = new_feature[:, 0]
 
             train_loss_fm += loss_fm.item()
             train_loss_sc += loss_sc.item()
