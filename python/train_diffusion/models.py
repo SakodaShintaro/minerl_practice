@@ -187,7 +187,7 @@ class PolicyHead(nn.Module):
         button_dist = Bernoulli(logits=button_logits)
 
         # 行動のサンプリング
-        camera_action = camera_dist.sample()
+        camera_action = camera_dist.sample() / 20
         button_action = button_dist.sample()
 
         # 行動の対数確率を計算
