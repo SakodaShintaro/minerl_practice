@@ -40,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--use_mock", action="store_true")
     parser.add_argument("--use_et", action="store_true")
     parser.add_argument("--use_random_action", action="store_true", default=True)
+    parser.add_argument("--select_action_interval", type=int, default=40)
     return parser.parse_args()
 
 
@@ -117,6 +118,7 @@ if __name__ == "__main__":
     obs = env.reset()
     obs_inv, obs_total_num = fix_inv_dict(obs["inventory"])
     done = False
+    action = None
     GAMMA = 0.9
 
     image_size = args.image_size
@@ -141,18 +143,20 @@ if __name__ == "__main__":
         logger.info(f"Beginning epoch {epoch}...")
         episode_steps = 0
         while not done:
-            episode_steps += 1
-            train_steps += 1
-
             # current inference
             # (1) action
-            action, log_prob, entropy = model.policy(feature)
-            action_dict = action_tensor_to_dict(action)
-            if args.use_random_action:
-                action_dict = env.action_space.sample()
-                action_dict["ESC"] = 0
-                action_dict["camera"][0] /= 2
-                action_dict["camera"][1] /= 2
+            if train_steps % args.select_action_interval == 0:
+                # select
+                action, log_prob, entropy = model.policy(feature)
+                action_dict = action_tensor_to_dict(action)
+                if args.use_random_action:
+                    action_dict = env.action_space.sample()
+                    action_dict["ESC"] = 0
+                    action_dict["camera"][0] /= 2
+                    action_dict["camera"][1] /= 2
+            else:
+                # recalculate only log_prob and entropy
+                log_prob, entropy = model.evaluate(feature, action.detach())
 
             # (2) value
             curr_value = model.value(feature)
@@ -171,6 +175,9 @@ if __name__ == "__main__":
                 # Map input images to latent space + normalize latents:
                 # The shape is [1, 4, h // 8, w // 8]
                 latent_image = vae.encode(image).latent_dist.sample().mul_(0.18215)
+
+            episode_steps += 1
+            train_steps += 1
 
             # compare predict image and actual image
             pred_image = sample_images_by_flow_matching(model, feature, vae, args)

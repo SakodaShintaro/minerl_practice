@@ -203,6 +203,34 @@ class PolicyHead(nn.Module):
 
         return action, log_prob, entropy
 
+    def evaluate(
+        self, x: torch.Tensor, action: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """行動に対する確率の評価"""
+        features = self.net(x)
+
+        # カメラ操作の確率分布
+        camera_mean = torch.tanh(self.camera_mean(features))
+        camera_std = self.camera_log_std.exp()
+        camera_dist = Normal(camera_mean, camera_std)
+
+        # ボタン操作の確率分布
+        button_logits = self.button_logits(features)
+        button_dist = Bernoulli(logits=button_logits)
+
+        # 行動を分割
+        camera_action, button_action = action.split([2, 22], dim=-1)
+
+        # 行動の対数確率を計算
+        camera_log_prob = camera_dist.log_prob(camera_action).sum(-1)
+        button_log_prob = button_dist.log_prob(button_action).sum(-1)
+        log_prob = camera_log_prob + button_log_prob
+
+        # エントロピー計算（探索の度合いを調整するために使用）
+        entropy = camera_dist.entropy().sum(-1) + button_dist.entropy().sum(-1)
+
+        return log_prob, entropy
+
 
 class ValueHead(nn.Module):
     def __init__(self, feature_dim: int, hidden_dim: int):
@@ -410,6 +438,9 @@ class DiT(nn.Module):
 
     def policy(self, feature):
         return self.policy_head(feature)
+
+    def evaluate(self, feature, action):
+        return self.policy_head.evaluate(feature, action)
 
     def value(self, feature):
         return self.value_head(feature)
