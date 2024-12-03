@@ -8,7 +8,6 @@
 
 import argparse
 import logging
-from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
 from shutil import rmtree
@@ -22,6 +21,7 @@ from models import DiT_models
 from sample_by_flow_matching import sample_images_by_flow_matching
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
+from utils import update_ema
 
 # the first flag below was False when we tested this script but True makes training a lot faster:
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -47,16 +47,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--steps", type=int, default=10_000)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser.parse_args()
-
-
-@torch.no_grad()
-def update_ema(ema_model: torch.nn.Module, model: torch.nn.Module, decay: float = 0.9999) -> None:
-    """Step the EMA model towards the current model."""
-    ema_params = OrderedDict(ema_model.named_parameters())
-    model_params = OrderedDict(model.named_parameters())
-
-    for name, param in model_params.items():
-        ema_params[name].mul_(decay).add_(param.data, alpha=1 - decay)
 
 
 def requires_grad(model: torch.nn.Module, flag: bool) -> None:  # noqa: FBT001
