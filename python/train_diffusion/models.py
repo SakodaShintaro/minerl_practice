@@ -188,6 +188,7 @@ class PolicyHead(nn.Module):
 
         # 行動のサンプリング
         camera_action = camera_dist.sample() / 20
+        camera_action[:, 0] /= 10  # pitch方向は抑える
         button_action = button_dist.sample()
         button_action[:, 0] = 1.0  # "attack"は常に実行
         button_action[:, 13] = 0.0  # "inventory"は常に実行
