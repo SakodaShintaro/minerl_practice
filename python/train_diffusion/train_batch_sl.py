@@ -21,7 +21,7 @@ from models import DiT_models
 from sample_by_flow_matching import sample_images_by_flow_matching
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
-from utils import update_ema
+from utils import update_ema, requires_grad, second_to_str
 
 # the first flag below was False when we tested this script but True makes training a lot faster:
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -44,34 +44,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--results_dir", type=Path, default="results")
     parser.add_argument("--seq_len", type=int, default=(16 + 1))
-    parser.add_argument("--steps", type=int, default=10_000)
+    parser.add_argument("--steps", type=int, default=1_000)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser.parse_args()
-
-
-def requires_grad(model: torch.nn.Module, flag: bool) -> None:  # noqa: FBT001
-    """Set requires_grad flag for all parameters in a model."""
-    for p in model.parameters():
-        p.requires_grad = flag
-
-
-def create_logger(logging_dir: str) -> logging.Logger:
-    """Create a logger that writes to a log file and stdout."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="[\033[34m%(asctime)s\033[0m] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[logging.StreamHandler(), logging.FileHandler(f"{logging_dir}/log.txt")],
-    )
-    return logging.getLogger(__name__)
-
-
-def second_to_str(seconds: float) -> str:
-    """Convert seconds to a human-readable string."""
-    second_int = int(seconds)
-    minutes, seconds = divmod(second_int, 60)
-    hours, minutes = divmod(minutes, 60)
-    return f"{hours:03d}:{minutes:02d}:{seconds:02d}"
 
 
 def save_ckpt(  # noqa: PLR0913
@@ -138,8 +113,16 @@ if __name__ == "__main__":
     results_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir = results_dir / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    logger = create_logger(results_dir)
-    logger.info(f"Experiment directory created at {results_dir}")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[\033[34m%(asctime)s\033[0m] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(f"{results_dir}/log.txt"),
+        ],
+    )
+    logger = logging.getLogger(__name__)
 
     # Create model:
     image_size = args.image_size
