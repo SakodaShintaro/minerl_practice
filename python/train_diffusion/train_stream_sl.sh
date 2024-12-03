@@ -9,7 +9,7 @@ result_dir=${script_dir}/../../train_result/$(date +"%Y%m%d_%H%M%S")_supervised
 MODEL_NAME="DiT-S/2"
 DATA_PATH="../../data"
 
-python3 train_stream.py \
+python3 train_stream_sl.py \
   --model=${MODEL_NAME} \
   --data_path=${DATA_PATH} \
   --results_dir=${result_dir}
