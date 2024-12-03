@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--results_dir", type=Path, default="results")
     parser.add_argument("--seq_len", type=int, default=(16 + 1))
-    parser.add_argument("--steps", type=int, default=100_000)
+    parser.add_argument("--steps", type=int, default=10_000)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser.parse_args()
 

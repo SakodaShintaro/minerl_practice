@@ -4,10 +4,10 @@ set -eux
 script_dir=$(readlink -f $(dirname $0))
 cd ${script_dir}
 
-result_dir=${script_dir}/../../train_result/$(date +"%Y%m%d_%H%M%S")_supervised
+result_dir=${script_dir}/../../train_result/$(date +"%Y%m%d_%H%M%S")_batch_sl
 
 MODEL_NAME="DiT-S/2"
-DATA_PATH="../../data"
+DATA_PATH="../../dataset/skip_frame/"
 
 python3 train_batch_sl.py \
   --model=${MODEL_NAME} \
