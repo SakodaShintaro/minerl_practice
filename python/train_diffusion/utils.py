@@ -113,7 +113,7 @@ def loss_flow_matching(
     perturbed_data = t * curr_image + (1 - t) * noise
     t = t.squeeze((1, 2, 3))
     dt = torch.zeros_like(t)
-    out = model.predict(perturbed_data, t * 999, dt, feature)
+    out = model.predict(perturbed_data, t, dt, feature)
     target = curr_image - noise
     loss_flow_matching = torch.mean(torch.square(out - target))
 
@@ -128,14 +128,14 @@ def loss_flow_matching(
 
     random_t = random_t_step * random_pow_minus2 * torch.ones_like(t)
     x_t = random_t * curr_image + (1 - random_t) * noise
-    v_t = model.predict(x_t, random_t * 999, random_pow_minus2 * 999, feature)
+    v_t = model.predict(x_t, random_t, random_pow_minus2, feature)
 
     next_t = random_t + random_pow_minus2
     x_next = x_t + v_t * random_pow_minus2
-    v_next = model.predict(x_next, next_t * 999, random_pow_minus2 * 999, feature)
+    v_next = model.predict(x_next, next_t, random_pow_minus2, feature)
 
     v_target = ((v_t + v_next) / 2).detach()
-    v_curr = model.predict(curr_image, random_t * 999, 2 * random_pow_minus2 * 999, feature)
+    v_curr = model.predict(curr_image, random_t, 2 * random_pow_minus2, feature)
     loss_shortcut = torch.mean(torch.square(v_target - v_curr))
 
     return loss_flow_matching, loss_shortcut
@@ -167,7 +167,7 @@ def sample_images_by_flow_matching(
             t = torch.ones(b, device=device) * num_t
             t = torch.cat([t, t], 0)
             dt_t = torch.zeros_like(t)
-            pred = model.predict(z, t * 999, dt_t, feature)
+            pred = model.predict(z, t, dt_t, feature)
             cond, uncond = pred.chunk(2, 0)
             pred = uncond + (cond - uncond) * args.cfg_scale
             pred = torch.cat([pred, pred], 0)

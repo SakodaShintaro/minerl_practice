@@ -416,6 +416,10 @@ class DiT(nn.Module):
         t: (1,) tensor of diffusion timesteps
         feature: (1, D) tensor of feature
         """
+        # expand t, dt from [0, 1] to [0, 999]
+        t *= 999
+        dt *= 999
+
         x = self.x_embedder(x) + self.pos_embed  # (1, L, D), where L = H * W / patch_size ** 2
         t = self.t_embedder(t)  # (1, D)
         dt = self.dt_embedder(dt)  # (1, D)

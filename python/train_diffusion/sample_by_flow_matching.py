@@ -66,7 +66,7 @@ def sample_images_by_flow_matching(
                 num_t = i / sample_n * (1 - eps) + eps
                 t = torch.ones(b, device=device) * num_t
                 t = torch.cat([t, t], 0)
-                pred = model.predict(z, t * 999, torch.zeros_like(t), feature)
+                pred = model.predict(z, t, torch.zeros_like(t), feature)
                 cond, uncond = pred.chunk(2, 0)
                 pred = uncond + (cond - uncond) * args.cfg_scale
                 pred = torch.cat([pred, pred], 0)
