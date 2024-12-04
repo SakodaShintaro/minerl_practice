@@ -6,11 +6,9 @@ cd ${script_dir}
 
 result_dir=${script_dir}/../../train_result/$(date +"%Y%m%d_%H%M%S")_batch_sl
 
-MODEL_NAME="DiT-S/2"
 DATA_PATH="../../dataset/skip_frame/"
 
 python3 train_batch_sl.py \
-  --model=${MODEL_NAME} \
   --data_path=${DATA_PATH} \
   --results_dir=${result_dir}
 

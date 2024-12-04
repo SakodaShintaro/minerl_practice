@@ -15,7 +15,6 @@ from time import time
 import pandas as pd
 import torch
 from minerl_dataset import MineRLDataset
-from models import DiT_models
 from sample_by_flow_matching import sample_images_by_flow_matching
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
@@ -32,15 +31,15 @@ torch.backends.cudnn.allow_tf32 = True
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--data_path", type=Path, required=True)
+    parser.add_argument("--results_dir", type=Path, required=True)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--ckpt", type=Path, default=None)
     parser.add_argument("--cfg_scale", type=float, default=1.0)
-    parser.add_argument("--data_path", type=Path, required=True)
     parser.add_argument("--image_size", type=int, default=32)
-    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-S/2")
-    parser.add_argument("--nfe", type=int, default=4, help="Number of Function Evaluations")
+    parser.add_argument("--model", type=str, default="DiT-S/2")
+    parser.add_argument("--nfe", type=int, default=4)
     parser.add_argument("--num_workers", type=int, default=8)
-    parser.add_argument("--results_dir", type=Path, default="results")
     parser.add_argument("--seq_len", type=int, default=(16 + 1))
     parser.add_argument("--steps", type=int, default=500)
     parser.add_argument("--lr", type=float, default=1e-4)
@@ -201,7 +200,9 @@ if __name__ == "__main__":
                 torch.cuda.synchronize()
                 end_time = time()
                 elapsed_time = end_time - start_time
-                remaining_time = elapsed_time * (limit_steps - train_steps) / train_steps
+                remaining_time = (
+                    elapsed_time * (limit_steps - train_steps) / train_steps
+                )
                 elapsed_time_str = second_to_str(elapsed_time)
                 remaining_time_str = second_to_str(remaining_time)
 
