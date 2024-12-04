@@ -358,39 +358,57 @@ class DiT(nn.Module):
     def forward(self, x, t, cond_image, cond_action):
         """
         Forward pass of DiT.
-        x: (N, T_in, C, H, W) tensor of spatial inputs (latent representations of images)
+        x: (N, T_pred, C, H, W) tensor of spatial inputs (latent representations of images)
         t: (N,) tensor of diffusion timesteps
         cond_image: (N, T_cond, C, H, W) tensor of spatial inputs (latent representations of images)
         cond_action: (N, T_cond, 24) tensor of class labels
         """
-        N, T_in, C, H, W = x.shape
-        T_cond = cond_image.shape[1]
-        T_sum = T_in + T_cond
-        image = torch.cat([x, cond_image], dim=1)  # (N, T_sum, C, H, W)
-        image = image.reshape(N * T_sum, C, H, W)  # (N * T_sum, C, H, W)
+        N, T_pred, C, H, W = x.shape
+        image = x  # (N, T_pred, C, H, W)
+        image = image.reshape(N * T_pred, C, H, W)
         image = (
             self.x_embedder(image) + self.pos_embed
-        )  # (N * T_sum, L, D), where L = H * W / patch_size ** 2
+        )  # (N * T_pred, L, D), where L = H * W / patch_size ** 2
         L, D = image.shape[1:3]
-        image = image.reshape(N, T_sum * L, D)  # (N, T_sum * L, D)
-        x, cond_image = image.split(
-            [T_in * L, T_cond * L], dim=1
-        )  # (N, T_in * L, D), (N, T_cond * L, D)
-        cond_image = cond_image.reshape(N, T_cond, L, D)  # (N, T_cond, L, D)
-        cond_image = cond_image.mean(dim=2)  # (N, T_cond, D)
-        action = self.action_embedder(cond_action)  # (N, T_cond, D)
-        cond = cond_image + action  # (N, T_cond, D)
-        cond_feature = self.mamba(cond)  # (N, T_cond, D)
-        last = cond_feature[:, -1]  # (N, D)
+        image = image.reshape(N, T_pred * L, D)  # (N, T_pred * L, D)
+        x = image
+
+        last = self.extract_features(cond_image, cond_action)  # (N, D)
+
         t = self.t_embedder(t)  # (N, D)
         c = t + last  # (N, D)
         for block in self.blocks:
-            x = block(x, c)  # (N, T_sum * (L + 1), D)
-        x = x[:, 0 : (T_in * L)]  # (N, T_in * L, D)
-        x = self.final_layer(x, c)  # (N, T_in * L, patch_size ** 2 * out_channels)
-        x = self.unpatchify(x)  # (N * T_in, out_channels, H, W)
-        x = x.reshape(N, T_in, self.out_channels, H, W)  # (N, T_in, out_channels, H, W)
+            x = block(x, c)  # (N, T_pred * (L + 1), D)
+        x = x[:, 0 : (T_pred * L)]  # (N, T_pred * L, D)
+        x = self.final_layer(x, c)  # (N, T_pred * L, patch_size ** 2 * out_channels)
+        x = self.unpatchify(x)  # (N * T_pred, out_channels, H, W)
+        x = x.reshape(N, T_pred, self.out_channels, H, W)  # (N, T_pred, out_channels, H, W)
         return x
+
+    def extract_features(self, image, action):
+        """
+        Compress the sequence of images and actions into a single feature vector.
+        image: (N, T_cond, C, H, W) tensor of spatial inputs (latent representations of images)
+        action: (N, T_cond, 24) tensor of class labels
+        """
+        # image
+        N, T, C, H, W = image.shape
+        image = image.reshape(N * T, C, H, W)
+        image = (
+            self.x_embedder(image) + self.pos_embed
+        )  # (N * T, L, D), where L = H * W / patch_size ** 2
+        L, D = image.shape[1:3]
+        image = image.reshape(N, T, L, D)
+        image = image.mean(dim=2)  # (N, T, D)
+
+        # action
+        action = self.action_embedder(action)  # (N, T, D)
+
+        # feature
+        seq_feature = image + action  # (N, T, D)
+        seq_feature = self.mamba(seq_feature)  # (N, T, D)
+        last = seq_feature[:, -1]  # (N, D)
+        return last
 
     def allocate_inference_cache(self, batch_size, dtype=None):
         conv_state, ssm_state = self.mamba.allocate_inference_cache(
