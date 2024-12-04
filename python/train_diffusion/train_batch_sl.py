@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--nfe", type=int, default=4)
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--seq_len", type=int, default=(16 + 1))
-    parser.add_argument("--steps", type=int, default=500)
+    parser.add_argument("--steps", type=int, default=1_000)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser.parse_args()
@@ -62,21 +62,18 @@ def save_ckpt(  # noqa: PLR0913
     }
     torch.save(checkpoint, checkpoint_path)
     model.eval()
-    sample_function = sample_images_by_flow_matching
-    samples = sample_function(loader, model, vae, args)
-    sample_dir = results_dir / "samples"
-    sample_dir.mkdir(parents=True, exist_ok=True)
+    samples = sample_images_by_flow_matching(loader, model, vae, args)
     pred, gt, action = samples[0]
     save_image(
         pred,
-        sample_dir / f"{train_steps:08d}_pred.png",
+        results_dir / "predict" / f"{train_steps:08d}.png",
         nrow=4,
         normalize=True,
         value_range=(-1, 1),
     )
     save_image(
         gt,
-        sample_dir / f"{train_steps:08d}_gt.png",
+        results_dir / "gt" / f"{train_steps:08d}.png",
         nrow=4,
         normalize=True,
         value_range=(-1, 1),
@@ -95,6 +92,10 @@ if __name__ == "__main__":
     # Setup an experiment folder:
     results_dir = args.results_dir
     results_dir.mkdir(parents=True, exist_ok=True)
+    pr_save_dir = results_dir / "predict"
+    pr_save_dir.mkdir(parents=True, exist_ok=True)
+    gt_save_dir = results_dir / "gt"
+    gt_save_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir = results_dir / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
