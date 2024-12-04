@@ -19,7 +19,7 @@ from models import DiT_models
 from sample_by_flow_matching import sample_images_by_flow_matching
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
-from utils import update_ema, second_to_str, create_models
+from utils import update_ema, second_to_str, create_models, loss_flow_matching
 
 # the first flag below was False when we tested this script but True makes training a lot faster:
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -145,14 +145,16 @@ if __name__ == "__main__":
 
     # Variables for monitoring/logging purposes:
     limit_steps = args.steps
-    train_steps = 0
-    log_steps = 0
-    running_loss = 0
     epoch = 0
-    start_time = time()
+    train_steps = 0
+    train_loss_fm = 0
+    train_loss_sc = 0
+    valid_loss = 0
+    ckpt_every = limit_steps // 10
+    log_every = max(limit_steps // 200, 1)
+    logger.info(f"{ckpt_every=}, {log_every=}")
 
-    ckpt_every = args.steps // 10
-    log_every = max(args.steps // 200, 1)
+    start_time = time()
 
     save_ckpt(valid_loader, model, ema, opt, args, train_steps)
     model.train()
@@ -171,32 +173,28 @@ if __name__ == "__main__":
             hidden_w = w // 8
             with torch.no_grad():
                 # Map input images to latent space + normalize latents:
-                image = image.view(b * seq, c, h, w)
-                image = vae.encode(image).latent_dist.sample().mul_(0.18215)
-                image = image.view(b, seq, 4, hidden_h, hidden_w)
+                latent_image = image.view(b * seq, c, h, w)
+                latent_image = (
+                    vae.encode(latent_image).latent_dist.sample().mul_(0.18215)
+                )
+                latent_image = latent_image.view(b, seq, 4, hidden_h, hidden_w)
 
-            cond_image = image[:, :-1]
-            pred_image = image[:, -1:]
+            cond_image = latent_image[:, :-1]
+            pred_image = latent_image[:, -1]
             cond_action = action[:, :-1]
 
-            noise = torch.randn_like(pred_image)
-            eps = 0.001
-            t = torch.rand(b, device=device) * (1 - eps) + eps
-            t = t.view(-1, 1, 1, 1, 1)
-            perturbed_data = t * pred_image + (1 - t) * noise
-            t = t.squeeze((1, 2, 3, 4))
-            out = model(perturbed_data, t * 999, cond_image, cond_action)
-            target = pred_image - noise
-            loss = torch.mean(torch.square(out - target))
-
+            # flow matchingの学習
+            feature = model.extract_features(cond_image, cond_action)
+            loss_fm, loss_sc = loss_flow_matching(model, pred_image, feature)
+            loss = loss_fm + 0.0 * loss_sc
             opt.zero_grad()
             loss.backward()
             opt.step()
             update_ema(ema, model)
 
             # Log loss values:
-            running_loss += loss.item()
-            log_steps += 1
+            train_loss_fm += loss_fm.item()
+            train_loss_sc += loss_sc.item()
             train_steps += 1
             if train_steps % log_every == 0:
                 # Measure training speed:
@@ -207,27 +205,34 @@ if __name__ == "__main__":
                 elapsed_time_str = second_to_str(elapsed_time)
                 remaining_time_str = second_to_str(remaining_time)
 
-                avg_loss = running_loss / log_steps
+                train_loss_fm /= log_every
+                train_loss_sc /= log_every
+                valid_loss /= log_every
                 logger.info(
                     f"remaining_time={remaining_time_str} "
                     f"elapsed_time={elapsed_time_str} "
                     f"epoch={epoch:04d} "
                     f"step={train_steps:08d} "
-                    f"loss={avg_loss:.4f}",
+                    f"loss_fm={train_loss_fm:.4f} "
+                    f"loss_sc={train_loss_sc:.4f} "
+                    f"loss_image={valid_loss:.4f}",
                 )
                 log_dict_list.append(
                     {
                         "elapsed_time": elapsed_time_str,
                         "epoch": epoch,
                         "step": train_steps,
-                        "loss": avg_loss,
+                        "loss_fm": train_loss_fm,
+                        "loss_sc": train_loss_sc,
+                        "loss_image": valid_loss,
                     },
                 )
                 df = pd.DataFrame(log_dict_list)
                 df.to_csv(results_dir / "log.tsv", index=False, sep="\t")
                 # Reset monitoring variables:
-                running_loss = 0
-                log_steps = 0
+                train_loss_fm = 0
+                train_loss_sc = 0
+                valid_loss = 0
 
             # Save DiT checkpoint:
             if train_steps % ckpt_every == 0:
