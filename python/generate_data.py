@@ -17,7 +17,8 @@ from collections import OrderedDict
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("save_root_dir", type=Path)
-    parser.add_argument("--select_action_interval", type=int, default=40)
+    parser.add_argument("--select_action_interval", type=int, default=10)
+    parser.add_argument("--without_inventory_action", action="store_true", default=True)
     return parser.parse_args()
 
 
@@ -68,6 +69,8 @@ if __name__ == "__main__":
             action["camera"][0] /= select_action_interval
             action["camera"][1] /= select_action_interval
             action["ESC"] = 0
+            if args.without_inventory_action:
+                action["inventory"] = 0
 
         # save obs and action
         Image.fromarray(obs).save(save_obs_dir / f"{step:08d}.png")
