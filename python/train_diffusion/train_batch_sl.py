@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--ckpt", type=Path, default=None)
     parser.add_argument("--cfg_scale", type=float, default=1.0)
-    parser.add_argument("--image_size", type=int, default=32)
+    parser.add_argument("--image_size", type=int, default=64)
     parser.add_argument("--model", type=str, default="DiT-S/2")
     parser.add_argument("--nfe", type=int, default=4)
     parser.add_argument("--num_workers", type=int, default=8)
