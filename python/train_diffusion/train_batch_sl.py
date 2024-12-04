@@ -90,15 +90,7 @@ def save_ckpt(  # noqa: PLR0913
     )
 
 
-#################################################################################
-#                                  Training Loop                                #
-#################################################################################
-
-
 if __name__ == "__main__":
-    """Trains a new DiT model."""
-    assert torch.cuda.is_available(), "Training currently requires at least one GPU."
-
     args = parse_args()
 
     device = 0
