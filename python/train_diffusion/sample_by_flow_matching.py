@@ -52,26 +52,27 @@ def sample_images_by_flow_matching(
             cond_image = image[:, :-1]
             cond_action = action[:, :-1]
 
+            feature = model.extract_features(cond_image, cond_action)
+            feature = torch.cat([feature, feature], 0)
+
             # Create sampling noise:
-            z = torch.randn(b, 1, 4, latent_size, latent_size, device=device)
+            z = torch.randn(b, 4, latent_size, latent_size, device=device)
 
             # Setup classifier-free guidance:
             z = torch.cat([z, z], 0)
-            cond_image = torch.cat([cond_image, cond_image], 0)
-            cond_action = torch.cat([cond_action, cond_action], 0)
 
             dt = 1.0 / sample_n
             for i in range(sample_n):
                 num_t = i / sample_n * (1 - eps) + eps
                 t = torch.ones(b, device=device) * num_t
                 t = torch.cat([t, t], 0)
-                pred = model.forward(z, t * 999, cond_image, cond_action)
+                pred = model.predict(z, t * 999, torch.zeros_like(t), feature)
                 cond, uncond = pred.chunk(2, 0)
                 pred = uncond + (cond - uncond) * args.cfg_scale
                 pred = torch.cat([pred, pred], 0)
                 z = z.detach().clone() + pred * dt
 
-            samples = z[:b, 0]
+            samples = z[:b]
             pred_image = vae.decode(samples / 0.18215).sample
             results.append((pred_image, gt_image, action))
             break
