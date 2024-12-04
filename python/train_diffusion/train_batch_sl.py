@@ -63,21 +63,22 @@ def save_ckpt(  # noqa: PLR0913
     torch.save(checkpoint, checkpoint_path)
     model.eval()
     samples = sample_images_by_flow_matching(loader, model, vae, args)
-    pred, gt, action = samples[0]
-    save_image(
-        pred,
-        results_dir / "predict" / f"{train_steps:08d}.png",
-        nrow=4,
-        normalize=True,
-        value_range=(-1, 1),
-    )
-    save_image(
-        gt,
-        results_dir / "gt" / f"{train_steps:08d}.png",
-        nrow=4,
-        normalize=True,
-        value_range=(-1, 1),
-    )
+    for i, sample in enumerate(samples):
+        pred, gt, action = sample
+        save_image(
+            pred,
+            results_dir / "predict" / f"{train_steps:08d}_{i:04d}.png",
+            nrow=4,
+            normalize=True,
+            value_range=(-1, 1),
+        )
+        save_image(
+            gt,
+            results_dir / "gt" / f"{train_steps:08d}_{i:04d}.png",
+            nrow=4,
+            normalize=True,
+            value_range=(-1, 1),
+        )
 
 
 if __name__ == "__main__":

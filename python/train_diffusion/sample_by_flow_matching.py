@@ -36,7 +36,7 @@ def sample_images_by_flow_matching(
 
         results = []
 
-        for batch in loader:
+        for idx, batch in enumerate(loader):
             image, action = batch
             image = image.to(device)  # [b, seq, c, h, w]
             gt_image = image[:, -1]
@@ -75,7 +75,9 @@ def sample_images_by_flow_matching(
             samples = z[:b]
             pred_image = vae.decode(samples / 0.18215).sample
             results.append((pred_image, gt_image, action))
-            break
+
+            if idx == 1:
+                break
 
         return results
 
