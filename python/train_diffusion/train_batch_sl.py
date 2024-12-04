@@ -8,20 +8,18 @@
 
 import argparse
 import logging
-from copy import deepcopy
 from pathlib import Path
 from shutil import rmtree
 from time import time
 
 import pandas as pd
 import torch
-from diffusers.models import AutoencoderKL
 from minerl_dataset import MineRLDataset
 from models import DiT_models
 from sample_by_flow_matching import sample_images_by_flow_matching
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
-from utils import update_ema, requires_grad, second_to_str
+from utils import update_ema, second_to_str, create_models
 
 # the first flag below was False when we tested this script but True makes training a lot faster:
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -45,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--results_dir", type=Path, default="results")
     parser.add_argument("--seq_len", type=int, default=(16 + 1))
     parser.add_argument("--steps", type=int, default=1_000)
+    parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser.parse_args()
 
@@ -125,32 +124,13 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     # Create model:
-    image_size = args.image_size
-    assert image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
-    latent_size = image_size // 8
-    ckpt = torch.load(args.ckpt) if args.ckpt is not None else None
-    model = DiT_models[args.model](
-        input_size=(latent_size, latent_size),
-        learn_sigma=False,
-    )
-    if ckpt is not None:
-        model.load_state_dict(ckpt["model"])
-    # Note that parameter initialization is done within the DiT constructor
-    ema = deepcopy(model).to(device)  # Create an EMA of the model for use after training
-    if ckpt is not None:
-        ema.load_state_dict(ckpt["ema"])
-    requires_grad(ema, flag=False)
-    model = model.to(device)
-    vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
+    model, ema, vae, opt = create_models(args, device)
     logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-    # Setup optimizer
-    opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=args.weight_decay)
-    if ckpt is not None:
-        opt.load_state_dict(ckpt["opt"])
-
     # Setup data
-    dataset = MineRLDataset(args.data_path, image_size=image_size, seq_len=args.seq_len)
+    dataset = MineRLDataset(
+        args.data_path, image_size=args.image_size, seq_len=args.seq_len
+    )
     logger.info(f"Train Dataset contains {len(dataset):,} images ({args.data_path})")
 
     train_loader = DataLoader(
