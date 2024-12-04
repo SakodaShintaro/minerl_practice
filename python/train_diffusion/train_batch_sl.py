@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--results_dir", type=Path, default="results")
     parser.add_argument("--seq_len", type=int, default=(16 + 1))
-    parser.add_argument("--steps", type=int, default=1_000)
+    parser.add_argument("--steps", type=int, default=500)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser.parse_args()
@@ -150,11 +150,6 @@ if __name__ == "__main__":
         pin_memory=True,
         drop_last=True,
     )
-
-    # Prepare models for training:
-    update_ema(ema, model, decay=0)  # Ensure EMA is initialized with synced weights
-    ema.eval()
-    logger.info("Finish setup ema")
 
     # Variables for monitoring/logging purposes:
     limit_steps = args.steps
