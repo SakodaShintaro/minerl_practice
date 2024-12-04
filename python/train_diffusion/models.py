@@ -412,23 +412,23 @@ class DiT(nn.Module):
     def predict(self, x, t, dt, feature):
         """
         Predict image by using the current feature.
-        x: (1, C, H, W) tensor of spatial inputs (latent representations of images)
-        t: (1,) tensor of diffusion timesteps
-        feature: (1, D) tensor of feature
+        x: (N, C, H, W) tensor of spatial inputs (latent representations of images)
+        t: (N,) tensor of diffusion timesteps
+        feature: (N, D) tensor of feature
         """
         # expand t, dt from [0, 1] to [0, 999]
         t *= 999
         dt *= 999
 
-        x = self.x_embedder(x) + self.pos_embed  # (1, L, D), where L = H * W / patch_size ** 2
-        t = self.t_embedder(t)  # (1, D)
-        dt = self.dt_embedder(dt)  # (1, D)
-        feature = feature.squeeze(1)  # (1, D)
-        c = t + dt + feature  # (1, D)
+        x = self.x_embedder(x) + self.pos_embed  # (N, L, D), where L = H * W / patch_size ** 2
+        t = self.t_embedder(t)  # (N, D)
+        dt = self.dt_embedder(dt)  # (N, D)
+        feature = feature.squeeze(1)  # (N, D)
+        c = t + dt + feature  # (N, D)
         for block in self.blocks:
             x = block(x, c)
         x = self.final_layer(x, c)
-        x = self.unpatchify(x)  # (1, out_channels, H, W)
+        x = self.unpatchify(x)  # (N, out_channels, H, W)
         return x
 
     def policy(self, feature):
