@@ -1,5 +1,3 @@
-"""Generate dataset with a random agent."""
-
 import argparse
 import logging
 from pathlib import Path

@@ -4,8 +4,6 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""A minimal training script for DiT."""
-
 import argparse
 import logging
 from pathlib import Path
@@ -23,10 +21,6 @@ from utils import update_ema, second_to_str, create_models, loss_flow_matching
 # the first flag below was False when we tested this script but True makes training a lot faster:
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
-
-#################################################################################
-#                             Training Helper Functions                         #
-#################################################################################
 
 
 def parse_args() -> argparse.Namespace:
