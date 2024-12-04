@@ -20,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ckpt", type=Path, required=True)
     return parser.parse_args()
 
-
+@torch.no_grad()
 def sample_images_by_flow_matching(
     loader: DataLoader,
     model: torch.nn.Module,
@@ -30,56 +30,55 @@ def sample_images_by_flow_matching(
     image_size = args.image_size
     sample_n = args.nfe
     eps = 0.001
-    with torch.no_grad():
-        device = model.parameters().__next__().device
-        latent_size = image_size // 8
+    device = model.parameters().__next__().device
+    latent_size = image_size // 8
 
-        results = []
+    results = []
 
-        for idx, batch in enumerate(loader):
-            image, action = batch
-            image = image.to(device)  # [b, seq, c, h, w]
-            gt_image = image[:, -1]
-            action = action.to(device)  # [b, seq, action_dim]
-            b, seq, c, h, w = image.shape
-            hidden_h = h // 8
-            hidden_w = w // 8
-            # Map input images to latent space + normalize latents:
-            image = image.view(b * seq, c, h, w)
-            image = vae.encode(image).latent_dist.sample().mul_(0.18215)
-            image = image.view(b, seq, 4, hidden_h, hidden_w)
+    for idx, batch in enumerate(loader):
+        image, action = batch
+        image = image.to(device)  # [b, seq, c, h, w]
+        gt_image = image[:, -1]
+        action = action.to(device)  # [b, seq, action_dim]
+        b, seq, c, h, w = image.shape
+        hidden_h = h // 8
+        hidden_w = w // 8
+        # Map input images to latent space + normalize latents:
+        image = image.view(b * seq, c, h, w)
+        image = vae.encode(image).latent_dist.sample().mul_(0.18215)
+        image = image.view(b, seq, 4, hidden_h, hidden_w)
 
-            cond_image = image[:, :-1]
-            cond_action = action[:, :-1]
+        cond_image = image[:, :-1]
+        cond_action = action[:, :-1]
 
-            feature = model.extract_features(cond_image, cond_action)
-            feature = torch.cat([feature, feature], 0)
+        feature = model.extract_features(cond_image, cond_action)
+        feature = torch.cat([feature, feature], 0)
 
-            # Create sampling noise:
-            z = torch.randn(b, 4, latent_size, latent_size, device=device)
+        # Create sampling noise:
+        z = torch.randn(b, 4, latent_size, latent_size, device=device)
 
-            # Setup classifier-free guidance:
-            z = torch.cat([z, z], 0)
+        # Setup classifier-free guidance:
+        z = torch.cat([z, z], 0)
 
-            dt = 1.0 / sample_n
-            for i in range(sample_n):
-                num_t = i / sample_n * (1 - eps) + eps
-                t = torch.ones(b, device=device) * num_t
-                t = torch.cat([t, t], 0)
-                pred = model.predict(z, t, torch.zeros_like(t), feature)
-                cond, uncond = pred.chunk(2, 0)
-                pred = uncond + (cond - uncond) * args.cfg_scale
-                pred = torch.cat([pred, pred], 0)
-                z = z.detach().clone() + pred * dt
+        dt = 1.0 / sample_n
+        for i in range(sample_n):
+            num_t = i / sample_n * (1 - eps) + eps
+            t = torch.ones(b, device=device) * num_t
+            t = torch.cat([t, t], 0)
+            pred = model.predict(z, t, torch.zeros_like(t), feature)
+            cond, uncond = pred.chunk(2, 0)
+            pred = uncond + (cond - uncond) * args.cfg_scale
+            pred = torch.cat([pred, pred], 0)
+            z = z.detach().clone() + pred * dt
 
-            samples = z[:b]
-            pred_image = vae.decode(samples / 0.18215).sample
-            results.append((pred_image, gt_image, action))
+        samples = z[:b]
+        pred_image = vae.decode(samples / 0.18215).sample
+        results.append((pred_image, gt_image, action))
 
-            if idx == 1:
-                break
+        if idx == 2:
+            break
 
-        return results
+    return results
 
 
 if __name__ == "__main__":
