@@ -6,7 +6,7 @@ cd ${script_dir}
 
 result_dir=${script_dir}/../../train_result/$(date +"%Y%m%d_%H%M%S")_batch_sl
 
-DATA_PATH="../../dataset/skip_frame/"
+DATA_PATH="../../dataset/without_inventory/"
 
 python3 train_batch_sl.py \
   --data_path=${DATA_PATH} \
