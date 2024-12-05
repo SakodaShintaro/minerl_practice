@@ -20,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ckpt", type=Path, required=True)
     return parser.parse_args()
 
+
 @torch.no_grad()
 def sample_images_by_flow_matching(
     loader: DataLoader,
@@ -75,7 +76,7 @@ def sample_images_by_flow_matching(
         pred_image = vae.decode(samples / 0.18215).sample
         results.append((pred_image, gt_image, action))
 
-        if idx == 2:
+        if idx == 20:
             break
 
     return results
@@ -96,14 +97,16 @@ if __name__ == "__main__":
     latent_size = train_args.image_size // 8
     model = DiT_models[train_args.model](
         input_size=latent_size,
-        learn_sigma=not train_args.use_flow_matching,
+        learn_sigma=False,
     ).to(device)
     # Auto-download a pre-trained model or load a custom DiT checkpoint from train.py:
     model.load_state_dict(state_dict["model"])
     model.eval()  # important!
     vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
 
-    dataset = MineRLDataset(args.data_path, image_size=train_args.image_size)
+    dataset = MineRLDataset(
+        args.data_path, image_size=train_args.image_size, seq_len=train_args.seq_len
+    )
     loader = DataLoader(
         dataset,
         batch_size=args.batch_size,
