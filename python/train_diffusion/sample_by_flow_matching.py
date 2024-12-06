@@ -18,6 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--ckpt", type=Path, required=True)
+    parser.add_argument("--nfe", type=int, default=4)
     return parser.parse_args()
 
 
@@ -116,7 +117,6 @@ if __name__ == "__main__":
         drop_last=True,
     )
 
-    args.nfe = train_args.nfe
     args.cfg_scale = train_args.cfg_scale
     result_list = sample_images_by_flow_matching(loader, model, vae, args)
 
