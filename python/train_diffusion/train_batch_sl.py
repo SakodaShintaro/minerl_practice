@@ -17,6 +17,7 @@ from sample_by_flow_matching import sample_images_by_flow_matching
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 from utils import update_ema, second_to_str, create_models, loss_flow_matching
+import numpy as np
 
 # the first flag below was False when we tested this script but True makes training a lot faster:
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -48,7 +49,7 @@ def save_ckpt(  # noqa: PLR0913
     opt: torch.optim.Optimizer,
     args: argparse.Namespace,
     train_steps: int,
-) -> None:
+) -> tuple[float, float]:
     results_dir = args.results_dir
     checkpoint_dir = results_dir / "checkpoints"
     rmtree(checkpoint_dir, ignore_errors=True)
@@ -63,8 +64,19 @@ def save_ckpt(  # noqa: PLR0913
     torch.save(checkpoint, checkpoint_path)
     model.eval()
     samples = sample_images_by_flow_matching(loader, model, vae, args)
+    samples_ema = sample_images_by_flow_matching(loader, ema, vae, args)
+    loss_list_main = []
+    loss_list_ema = []
     for i, sample in enumerate(samples):
         pred, gt, action = sample
+        pred_ema, _, _ = samples_ema[i]
+        save_image(
+            gt,
+            results_dir / "gt" / f"{train_steps:08d}_{i:04d}.png",
+            nrow=4,
+            normalize=True,
+            value_range=(-1, 1),
+        )
         save_image(
             pred,
             results_dir / "predict" / f"{train_steps:08d}_{i:04d}.png",
@@ -73,12 +85,18 @@ def save_ckpt(  # noqa: PLR0913
             value_range=(-1, 1),
         )
         save_image(
-            gt,
-            results_dir / "gt" / f"{train_steps:08d}_{i:04d}.png",
+            pred_ema,
+            results_dir / "predict_ema" / f"{train_steps:08d}_{i:04d}.png",
             nrow=4,
             normalize=True,
             value_range=(-1, 1),
         )
+        loss_main = torch.nn.functional.mse_loss(pred, gt, reduction="mean")
+        loss_ema = torch.nn.functional.mse_loss(pred_ema, gt, reduction="mean")
+        loss_list_main.append(loss_main.item())
+        loss_list_ema.append(loss_ema.item())
+
+    return np.mean(loss_list_main), np.mean(loss_list_ema)
 
 
 if __name__ == "__main__":
@@ -93,10 +111,12 @@ if __name__ == "__main__":
     # Setup an experiment folder:
     results_dir = args.results_dir
     results_dir.mkdir(parents=True, exist_ok=True)
-    pr_save_dir = results_dir / "predict"
-    pr_save_dir.mkdir(parents=True, exist_ok=True)
     gt_save_dir = results_dir / "gt"
     gt_save_dir.mkdir(parents=True, exist_ok=True)
+    pr_save_dir = results_dir / "predict"
+    pr_save_dir.mkdir(parents=True, exist_ok=True)
+    em_save_dir = results_dir / "predict_ema"
+    em_save_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir = results_dir / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
@@ -144,14 +164,15 @@ if __name__ == "__main__":
     train_steps = 0
     train_loss_fm = 0
     train_loss_sc = 0
-    valid_loss = 0
     ckpt_every = limit_steps // 10
     log_every = max(limit_steps // 200, 1)
     logger.info(f"{ckpt_every=}, {log_every=}")
 
     start_time = time()
 
-    save_ckpt(valid_loader, model, ema, opt, args, train_steps)
+    valid_loss_main, valid_loss_ema = save_ckpt(
+        valid_loader, model, ema, opt, args, train_steps
+    )
     model.train()
 
     log_dict_list = []
@@ -204,7 +225,6 @@ if __name__ == "__main__":
 
                 train_loss_fm /= log_every
                 train_loss_sc /= log_every
-                valid_loss /= log_every
                 logger.info(
                     f"remaining_time={remaining_time_str} "
                     f"elapsed_time={elapsed_time_str} "
@@ -212,7 +232,8 @@ if __name__ == "__main__":
                     f"step={train_steps:08d} "
                     f"loss_fm={train_loss_fm:.4f} "
                     f"loss_sc={train_loss_sc:.4f} "
-                    f"loss_image={valid_loss:.4f}",
+                    f"loss_image_main={valid_loss_main:.4f} "
+                    f"loss_image_ema={valid_loss_ema:.4f}",
                 )
                 log_dict_list.append(
                     {
@@ -221,7 +242,8 @@ if __name__ == "__main__":
                         "step": train_steps,
                         "loss_fm": train_loss_fm,
                         "loss_sc": train_loss_sc,
-                        "loss_image": valid_loss,
+                        "loss_image": valid_loss_main,
+                        "loss_image_ema": valid_loss_ema,
                     },
                 )
                 df = pd.DataFrame(log_dict_list)
@@ -229,11 +251,12 @@ if __name__ == "__main__":
                 # Reset monitoring variables:
                 train_loss_fm = 0
                 train_loss_sc = 0
-                valid_loss = 0
 
             # Save DiT checkpoint:
             if train_steps % ckpt_every == 0:
-                save_ckpt(valid_loader, model, ema, opt, args, train_steps)
+                valid_loss_main, valid_loss_ema = save_ckpt(
+                    valid_loader, model, ema, opt, args, train_steps
+                )
                 model.train()
 
             if train_steps >= limit_steps:
