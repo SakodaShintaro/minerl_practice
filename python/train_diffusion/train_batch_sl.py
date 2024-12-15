@@ -28,15 +28,15 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=Path, required=True)
     parser.add_argument("--results_dir", type=Path, required=True)
-    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--ckpt", type=Path, default=None)
     parser.add_argument("--cfg_scale", type=float, default=1.0)
     parser.add_argument("--image_size", type=int, default=64)
     parser.add_argument("--model", type=str, default="DiT-S/2")
     parser.add_argument("--nfe", type=int, default=4)
     parser.add_argument("--num_workers", type=int, default=8)
-    parser.add_argument("--seq_len", type=int, default=(16 + 1))
-    parser.add_argument("--steps", type=int, default=50_000)
+    parser.add_argument("--seq_len", type=int, default=(64 + 1))
+    parser.add_argument("--steps", type=int, default=100_000)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser.parse_args()
@@ -151,7 +151,7 @@ if __name__ == "__main__":
 
     valid_loader = DataLoader(
         dataset,
-        batch_size=64,
+        batch_size=16,
         shuffle=False,
         num_workers=args.num_workers,
         pin_memory=True,
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     train_steps = 0
     train_loss_fm = 0
     train_loss_sc = 0
-    ckpt_every = limit_steps // 10
+    ckpt_every = limit_steps // 40
     log_every = max(limit_steps // 200, 1)
     logger.info(f"{ckpt_every=}, {log_every=}")
 
