@@ -1,2 +1,0 @@
-/home/user/.local/lib/python3.10/site-packages/minerl/herobraine/env_specs/obtain_specs.py
-を変更してタイムアウトステップを変えてみる

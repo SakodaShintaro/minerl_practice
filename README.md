@@ -4,16 +4,23 @@ MineRLの環境でいろいろ試してみるリポジトリ
 
 ## 環境構築の仕方
 
-`docker` ディレクトリのスクリプトを参照
+(1) `docker` ディレクトリのスクリプトを参照してコンテナを作る
 
-## その他メモ
+(2) その後 `./setup.sh` を実行する（15分くらいかかる）
 
-まずは既存の強化学習ライブラリが動くのかどうかを試す。
+(3) `pip3 install -r ./python/requirements.txt`
 
-[stable-baselines3](https://github.com/DLR-RM/stable-baselines3) の方を試した。
+## メモ
 
-```bash
-pip3 install stable-baselines3[extra]
-```
+意外と拡散モデルでの次状態予測を書く上で考えるべきことが多い。入力のタイムステップをどれくらいにするか、予測のタイムステップをどれくらいにするか。
+ニューラルネットワークのモデルもタイムステップが入るので画像部分でいろいろいじる必要がある。
+また、行動の埋め込みも同様にタイムステップがあるのでこれをどうすると綺麗なのかは不明。
 
-行動・観測空間を適切に変換することで動作はした。詳細は `python/train_sb3.py` 参照。
+画像は 360 * 640が 1/8ずつされて (45, 80)になる。
+actionのdimは24
+
+### MineRLを編集する
+
+`$HOME/.local/lib/python3.10/site-packages/minerl/herobraine/env_specs/obtain_specs.py`
+
+を変更してタイムアウトステップなどを変えることができる。
