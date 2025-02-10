@@ -3,15 +3,15 @@
 import argparse
 import json
 import logging
+from collections import OrderedDict
 from pathlib import Path
-from tqdm import tqdm
 
 import gym
 import minerl  # noqa: F401
 import numpy as np
-from PIL import Image
 import pandas as pd
-from collections import OrderedDict
+from PIL import Image
+from tqdm import tqdm
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,7 +30,7 @@ def fix_inv_dict(inv: OrderedDict) -> dict:
                 result[k] = int(v)
         else:
             print(k, v, type(v), v.shape)
-            assert False
+            raise AssertionError
     return result
 
 
