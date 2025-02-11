@@ -6,7 +6,7 @@ from gym import spaces
 
 
 class MockMineRL(gym.Env):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
         # Action space definition matching MineRL
@@ -49,13 +49,13 @@ class MockMineRL(gym.Env):
 
         self.step_num = 0
 
-    def reset(self):
+    def reset(self) -> dict:
         # ランダムな画像データを生成
         self.step_num = 0
         pov = np.random.randint(0, 255, size=(360, 640, 3), dtype=np.uint8)
         return {"pov": pov, "inventory": {}}
 
-    def step(self, _):
+    def step(self, _) -> tuple:  # noqa: ANN001
         # 新しい観測を生成
         obs = {
             "pov": np.random.randint(0, 255, size=(360, 640, 3), dtype=np.uint8),
@@ -67,7 +67,7 @@ class MockMineRL(gym.Env):
 
         return obs, 0.0, terminal, {}
 
-    def render(self):
+    def render(self) -> None:
         pass
 
 
