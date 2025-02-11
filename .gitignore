@@ -3,3 +3,4 @@ dataset
 *.png
 *.json
 *.pyc
+wandb
