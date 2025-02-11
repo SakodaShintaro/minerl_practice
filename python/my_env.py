@@ -15,13 +15,18 @@ class MySettingWrapper(gym.Wrapper):
         self.timeout = self.env.task.max_episode_steps
         self.num_steps = 0
         self.episode_over = False
+        self.open_inventory = False
+        self.previous_inventory_action = 0
 
     def step(self, action: dict) -> tuple:
         if self.episode_over:
             raise RuntimeError("Expected `reset` after episode terminated, not `step`.")
         observation, reward, done, info = super().step(action)
-        if action["attack"] == 1:
+        if self.previous_inventory_action == 0 and action["inventory"] == 1:
+            self.open_inventory = not self.open_inventory
+        if not self.open_inventory:
             reward += 1
+        self.previous_inventory_action = action["inventory"]
         self.num_steps += 1
         if self.num_steps >= self.timeout:
             done = True
