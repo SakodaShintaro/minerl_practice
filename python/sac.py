@@ -1,0 +1,397 @@
+# docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/sac/#sac_continuous_actionpy
+import random
+import time
+from dataclasses import dataclass
+
+import cv2
+import gym
+import numpy as np
+import torch
+import torch.nn.functional as F
+import tyro
+from diffusers.models import AutoencoderKL
+from torch import optim
+from torchvision import transforms
+from tqdm import tqdm
+
+import my_env
+import wandb
+from network import Actor, SoftQNetwork
+from train_diffusion.mock_env import MockMineRL
+
+
+@dataclass
+class ReplayBufferData:
+    observations: torch.Tensor
+    next_observations: torch.Tensor
+    actions: torch.Tensor
+    rewards: torch.Tensor
+    dones: torch.Tensor
+
+
+class ReplayBuffer:
+    def __init__(
+        self,
+        size: int,
+        obs_shape: np.ndarray,
+        action_shape: np.ndarray,
+        device: torch.device,
+    ) -> None:
+        self.size = size
+        self.action_shape = action_shape
+        self.device = device
+
+        self.observations = np.zeros((size, *obs_shape), dtype=np.uint8)
+        self.next_observations = np.zeros((size, *obs_shape), dtype=np.uint8)
+        self.actions = np.zeros((size, *action_shape), dtype=np.float32)
+        self.rewards = np.zeros((size, 1), dtype=np.float32)
+        self.dones = np.zeros((size, 1), dtype=np.float32)
+
+        self.idx = 0
+        self.full = False
+
+    def add(
+        self,
+        obs: np.ndarray,
+        next_obs: np.ndarray,
+        action: np.ndarray,
+        reward: float,
+        done: bool,
+    ) -> None:
+        self.observations[self.idx] = obs
+        self.next_observations[self.idx] = next_obs
+        self.actions[self.idx] = action
+        self.rewards[self.idx] = reward
+        self.dones[self.idx] = done
+
+        self.idx = (self.idx + 1) % self.size
+        self.full = self.full or self.idx == 0
+
+    def sample(self, batch_size: int) -> ReplayBufferData:
+        idx = np.random.randint(0, self.size if self.full else self.idx, size=batch_size)
+        return ReplayBufferData(
+            self.observations[idx],
+            self.next_observations[idx],
+            torch.Tensor(self.actions[idx]).to(self.device),
+            torch.Tensor(self.rewards[idx]).to(self.device),
+            torch.Tensor(self.dones[idx]).to(self.device),
+        )
+
+
+@dataclass
+class Args:
+    exp_name: str = ""
+    """the name of this experiment"""
+    seed: int = 1
+    """seed of the experiment"""
+    torch_deterministic: bool = True
+    """if toggled, `torch.backends.cudnn.deterministic=False`"""
+    cuda: bool = True
+    """if toggled, cuda will be enabled by default"""
+    gpu_id: int = 0
+    """the gpu id to use"""
+
+    # Algorithm specific arguments
+    env_id: str = "Humanoid-v5"
+    """the environment id of the task"""
+    buffer_size: int = int(1e5)
+    """the replay memory buffer size"""
+    gamma: float = 0.99
+    """the discount factor gamma"""
+    tau: float = 0.005
+    """target smoothing coefficient (default: 0.005)"""
+    batch_size: int = 256
+    """the batch size of sample from the reply memory"""
+    learning_starts: int = 500
+    """timestep to start learning"""
+    policy_lr: float = 3e-4
+    """the learning rate of the policy network optimizer"""
+    q_lr: float = 1e-3
+    """the learning rate of the Q network network optimizer"""
+
+
+def action_to_vec(action: dict) -> np.ndarray:
+    """
+    action=OrderedDict([
+    ('attack', 1),
+    ('back', 1),
+    ('camera', array([-22.25375 , -55.544125], dtype=float32)),
+    ('drop', 0),
+    ('forward', 1),
+    ('hotbar.1', 1),
+    ('hotbar.2', 1),
+    ('hotbar.3', 0),
+    ('hotbar.4', 0),
+    ('hotbar.5', 0),
+    ('hotbar.6', 0),
+    ('hotbar.7', 0),
+    ('hotbar.8', 1),
+    ('hotbar.9', 0),
+    ('inventory', 1),
+    ('jump', 0),
+    ('left', 1),
+    ('pickItem', 0),
+    ('right', 0),
+    ('sneak', 1),
+    ('sprint', 1),
+    ('swapHands', 1),
+    ('use', 0)])
+    """
+    return np.array(
+        [
+            *action["camera"],
+            action["attack"],
+            action["back"],
+            action["drop"],
+            action["forward"],
+            action["hotbar.1"],
+            action["hotbar.2"],
+            action["hotbar.3"],
+            action["hotbar.4"],
+            action["hotbar.5"],
+            action["hotbar.6"],
+            action["hotbar.7"],
+            action["hotbar.8"],
+            action["hotbar.9"],
+            action["inventory"],
+            action["jump"],
+            action["left"],
+            action["pickItem"],
+            action["right"],
+            action["sneak"],
+            action["sprint"],
+            action["swapHands"],
+            action["use"],
+        ],
+        dtype=np.float32,
+    )
+
+
+def convert_to_env_action(action: np.ndarray) -> dict:
+    return {
+        "camera": action[:2],
+        "attack": int(np.random.binomial(1, action[2])),
+        "back": int(np.random.binomial(1, action[3])),
+        "drop": int(np.random.binomial(1, action[4])),
+        "forward": int(np.random.binomial(1, action[5])),
+        "hotbar.1": int(np.random.binomial(1, action[6])),
+        "hotbar.2": int(np.random.binomial(1, action[7])),
+        "hotbar.3": int(np.random.binomial(1, action[8])),
+        "hotbar.4": int(np.random.binomial(1, action[9])),
+        "hotbar.5": int(np.random.binomial(1, action[10])),
+        "hotbar.6": int(np.random.binomial(1, action[11])),
+        "hotbar.7": int(np.random.binomial(1, action[12])),
+        "hotbar.8": int(np.random.binomial(1, action[13])),
+        "hotbar.9": int(np.random.binomial(1, action[14])),
+        "inventory": int(np.random.binomial(1, action[15])),
+        "jump": int(np.random.binomial(1, action[16])),
+        "left": int(np.random.binomial(1, action[17])),
+        "pickItem": int(np.random.binomial(1, action[18])),
+        "right": int(np.random.binomial(1, action[19])),
+        "sneak": int(np.random.binomial(1, action[20])),
+        "sprint": int(np.random.binomial(1, action[21])),
+        "swapHands": int(np.random.binomial(1, action[22])),
+        "use": int(np.random.binomial(1, action[23])),
+    }
+
+
+if __name__ == "__main__":
+    args = tyro.cli(Args)
+    args.total_timesteps = my_env.TIMEOUT
+    run_name = f"SAC_{args.env_id}_{args.exp_name}"
+
+    wandb.init(
+        project="MineRL",
+        config=vars(args),
+        name=run_name,
+        monitor_gym=True,
+        save_code=True,
+    )
+
+    # seeding
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic = args.torch_deterministic
+    torch.cuda.set_device(args.gpu_id)
+
+    device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+
+    # env setup
+    env = gym.make("MineRLMySetting-v0")  # noqa: ERA001
+    # env = MockMineRL()
+    vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
+
+    print(f"{env.action_space=}")
+    print(f"{env.observation_space=}")
+    action_dim = 24
+    image_h = 360 // 5
+    image_w = 640 // 5
+    z_h = image_h // 8
+    z_w = image_w // 8
+    z_ch = 4
+    input_dim = z_h * z_w * z_ch
+
+    actor = Actor(input_dim=input_dim, hidden_dim=256, action_dim=24, use_normalize=False)
+    actor = actor.to(device)
+    qf1 = SoftQNetwork(
+        input_dim=input_dim,
+        action_dim=action_dim,
+        hidden_dim=256,
+        use_normalize=False,
+    ).to(device)
+    qf2 = SoftQNetwork(
+        input_dim=input_dim,
+        action_dim=action_dim,
+        hidden_dim=256,
+        use_normalize=False,
+    ).to(device)
+    q_optimizer = optim.Adam(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
+    actor_optimizer = optim.Adam(list(actor.parameters()), lr=args.policy_lr)
+
+    # Automatic entropy tuning
+    target_entropy = -action_dim
+    log_alpha = torch.zeros(1, requires_grad=True, device=device)
+    alpha = log_alpha.exp().item()
+    a_optimizer = optim.Adam([log_alpha], lr=args.q_lr)
+
+    torch.autograd.set_detect_anomaly(True)
+
+    rb = ReplayBuffer(
+        args.buffer_size,
+        np.array([image_h, image_w, 3]),
+        np.array([24]),
+        device,
+    )
+    start_time = time.time()
+
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
+        ],
+    )
+
+    # start the game
+    obs = env.reset()
+    obs = obs["pov"]
+    obs = cv2.resize(obs, (image_w, image_h))
+    progress_bar = tqdm(range(args.total_timesteps), dynamic_ncols=True)
+    for global_step in range(args.total_timesteps):
+        # put action logic here
+        if global_step < args.learning_starts:
+            env_action = env.action_space.sample()
+            base_action = action_to_vec(env_action)
+        else:
+            obs_tensor = transform(obs)
+            obs_tensor = obs_tensor.unsqueeze(0).to(device)
+            with torch.no_grad():
+                latent_image = vae.encode(obs_tensor).latent_dist.sample().mul_(0.18215)
+                latent = latent_image.flatten(start_dim=1)
+            base_action, _, _ = actor.get_action(latent)
+            base_action = base_action[0].detach().cpu().numpy()
+            env_action = convert_to_env_action(base_action)
+
+        # execute the game and log data.
+        next_obs, reward, termination, info = env.step(env_action)
+        env.render()
+        next_obs = next_obs["pov"]
+        next_obs = cv2.resize(next_obs, (image_w, image_h))
+        rb.add(obs, next_obs, base_action, reward, termination)
+
+        if termination:
+            data_dict = {
+                "global_step": global_step,
+                "episodic_return": info["episode"]["r"],
+                "episodic_length": info["episode"]["l"],
+            }
+            wandb.log(data_dict)
+            obs = env.reset()
+            obs = obs["pov"]
+            obs = cv2.resize(obs, (image_w, image_h))
+        else:
+            obs = next_obs
+
+        # training.
+        if global_step > args.learning_starts:
+            data = rb.sample(args.batch_size)
+            data.observations = (
+                torch.tensor(data.observations, dtype=torch.float32).permute(0, 3, 1, 2) / 255.0
+            )
+            data.observations = (data.observations - 0.5) / 0.5
+            data.observations = data.observations.to(device)
+            data.next_observations = (
+                torch.tensor(data.next_observations, dtype=torch.float32).permute(0, 3, 1, 2)
+                / 255.0
+            )
+            data.next_observations = (data.next_observations - 0.5) / 0.5
+            data.next_observations = data.next_observations.to(device)
+
+            with torch.no_grad():
+                data.observations = vae.encode(data.observations).latent_dist.sample().mul_(0.18215)
+                data.observations = data.observations.flatten(start_dim=1)
+                data.next_observations = (
+                    vae.encode(data.next_observations).latent_dist.sample().mul_(0.18215)
+                )
+                data.next_observations = data.next_observations.flatten(start_dim=1)
+
+                next_state_actions, next_state_log_pi, _ = actor.get_action(data.next_observations)
+                qf1_next_target = qf1(data.next_observations, next_state_actions)
+                qf2_next_target = qf2(data.next_observations, next_state_actions)
+                min_q = torch.min(qf1_next_target, qf2_next_target)
+                min_qf_next_target = min_q - alpha * next_state_log_pi
+                next_q_value = data.rewards.flatten() + (1 - data.dones.flatten()) * args.gamma * (
+                    min_qf_next_target
+                ).view(-1)
+
+            qf1_a_values = qf1(data.observations, data.actions).view(-1)
+            qf2_a_values = qf2(data.observations, data.actions).view(-1)
+            qf1_loss = F.mse_loss(qf1_a_values, next_q_value)
+            qf2_loss = F.mse_loss(qf2_a_values, next_q_value)
+            qf_loss = qf1_loss + qf2_loss
+
+            # optimize the model
+            q_optimizer.zero_grad()
+            qf_loss.backward()
+            q_optimizer.step()
+
+            pi, log_pi, _ = actor.get_action(data.observations)
+            qf1_pi = qf1(data.observations, pi)
+            qf2_pi = qf2(data.observations, pi)
+            min_qf_pi = torch.min(qf1_pi, qf2_pi)
+            actor_loss = ((alpha * log_pi) - min_qf_pi).mean()
+
+            actor_optimizer.zero_grad()
+            actor_loss.backward()
+            actor_optimizer.step()
+
+            with torch.no_grad():
+                _, log_pi, _ = actor.get_action(data.observations)
+            alpha_loss = (-log_alpha.exp() * (log_pi + target_entropy)).mean()
+
+            a_optimizer.zero_grad()
+            alpha_loss.backward()
+            a_optimizer.step()
+            alpha = log_alpha.exp().item()
+
+            if global_step % 100 == 0:
+                elapsed_time = time.time() - start_time
+                data_dict = {
+                    "global_step": global_step,
+                    "losses/qf1_values": qf1_a_values.mean().item(),
+                    "losses/qf2_values": qf2_a_values.mean().item(),
+                    "losses/qf1_loss": qf1_loss.item(),
+                    "losses/qf2_loss": qf2_loss.item(),
+                    "losses/qf_loss": qf_loss.item() / 2.0,
+                    "losses/actor_loss": actor_loss.item(),
+                    "losses/alpha": alpha,
+                    "losses/log_pi": log_pi.mean().item(),
+                    "losses/alpha_loss": alpha_loss.item(),
+                    "charts/elapse_time_sec": elapsed_time,
+                    "charts/SPS": int(global_step / elapsed_time),
+                }
+                wandb.log(data_dict)
+
+        progress_bar.update(1)
+
+    env.close()
