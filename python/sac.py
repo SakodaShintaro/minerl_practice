@@ -1,7 +1,9 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/sac/#sac_continuous_actionpy
+import json
 import random
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import gym
@@ -100,7 +102,7 @@ class Args:
     """the discount factor gamma"""
     tau: float = 0.005
     """target smoothing coefficient (default: 0.005)"""
-    batch_size: int = 256
+    batch_size: int = 128
     """the batch size of sample from the reply memory"""
     learning_starts: int = 500
     """timestep to start learning"""
@@ -217,6 +219,14 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
+    datetime_str = time.strftime("%Y%m%d_%H%M%S")
+    save_dir = Path("../train_result") / datetime_str
+    save_dir.mkdir(parents=True, exist_ok=True)
+    save_obs_dir = save_dir / "obs"
+    save_obs_dir.mkdir(parents=True, exist_ok=True)
+    save_action_dir = save_dir / "action"
+    save_action_dir.mkdir(parents=True, exist_ok=True)
+
     # env setup
     env = gym.make("MineRLMySetting-v0")
     # env = MockMineRL()  # noqa: ERA001
@@ -289,6 +299,17 @@ if __name__ == "__main__":
             base_action, _, _ = actor.get_action(latent)
             base_action = base_action[0].detach().cpu().numpy()
             env_action = convert_to_env_action(base_action)
+
+        # save
+        cv2.imwrite(
+            str(save_obs_dir / f"{global_step:08d}.png"),
+            cv2.cvtColor(obs, cv2.COLOR_RGB2BGR),
+        )
+        with (save_action_dir / f"{global_step:08d}.json").open("w") as f:
+            action_serializable = {
+                k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in env_action.items()
+            }
+            json.dump(action_serializable, f)
 
         # execute the game and log data.
         next_obs, reward, termination, info = env.step(env_action)
