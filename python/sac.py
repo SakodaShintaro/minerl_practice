@@ -94,8 +94,6 @@ class Args:
     """the gpu id to use"""
 
     # Algorithm specific arguments
-    env_id: str = "Humanoid-v5"
-    """the environment id of the task"""
     buffer_size: int = int(1e5)
     """the replay memory buffer size"""
     gamma: float = 0.99
@@ -200,7 +198,7 @@ def convert_to_env_action(action: np.ndarray) -> dict:
 if __name__ == "__main__":
     args = tyro.cli(Args)
     args.total_timesteps = my_env.TIMEOUT
-    run_name = f"SAC_{args.env_id}_{args.exp_name}"
+    run_name = f"SAC_{args.exp_name}"
 
     wandb.init(
         project="MineRL",
