@@ -17,7 +17,7 @@ from tqdm import tqdm
 import my_env
 import wandb
 from network import Actor, SoftQNetwork
-from train_diffusion.mock_env import MockMineRL
+from train_diffusion.mock_env import MockMineRL  # noqa: F401
 
 
 @dataclass
@@ -218,12 +218,10 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    env = gym.make("MineRLMySetting-v0")  # noqa: ERA001
-    # env = MockMineRL()
+    env = gym.make("MineRLMySetting-v0")
+    # env = MockMineRL()  # noqa: ERA001
     vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
 
-    print(f"{env.action_space=}")
-    print(f"{env.observation_space=}")
     action_dim = 24
     image_h = 360 // 5
     image_w = 640 // 5
@@ -298,6 +296,7 @@ if __name__ == "__main__":
         next_obs = next_obs["pov"]
         next_obs = cv2.resize(next_obs, (image_w, image_h))
         rb.add(obs, next_obs, base_action, reward, termination)
+        wandb.log({"reward": reward})
 
         if termination:
             data_dict = {
@@ -377,7 +376,8 @@ if __name__ == "__main__":
             if global_step % 100 == 0:
                 elapsed_time = time.time() - start_time
                 data_dict = {
-                    "global_step": global_step,
+                    "charts/global_step": global_step,
+                    "charts/elapse_time_sec": elapsed_time,
                     "losses/qf1_values": qf1_a_values.mean().item(),
                     "losses/qf2_values": qf2_a_values.mean().item(),
                     "losses/qf1_loss": qf1_loss.item(),
@@ -387,8 +387,6 @@ if __name__ == "__main__":
                     "losses/alpha": alpha,
                     "losses/log_pi": log_pi.mean().item(),
                     "losses/alpha_loss": alpha_loss.item(),
-                    "charts/elapse_time_sec": elapsed_time,
-                    "charts/SPS": int(global_step / elapsed_time),
                 }
                 wandb.log(data_dict)
 
