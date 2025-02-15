@@ -96,7 +96,7 @@ class Args:
     # Algorithm specific arguments
     buffer_size: int = int(1e5)
     """the replay memory buffer size"""
-    gamma: float = 0.99
+    gamma: float = 0.9
     """the discount factor gamma"""
     tau: float = 0.005
     """target smoothing coefficient (default: 0.005)"""
