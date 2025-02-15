@@ -318,15 +318,7 @@ if __name__ == "__main__":
         wandb.log({"reward": reward})
 
         if termination:
-            data_dict = {
-                "global_step": global_step,
-                "episodic_return": info["episode"]["r"],
-                "episodic_length": info["episode"]["l"],
-            }
-            wandb.log(data_dict)
-            obs = env.reset()
-            obs = obs["pov"]
-            obs = cv2.resize(obs, (image_w, image_h))
+            break
         else:
             obs = next_obs
 
