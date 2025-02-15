@@ -224,6 +224,8 @@ if __name__ == "__main__":
     save_obs_dir.mkdir(parents=True, exist_ok=True)
     save_action_dir = save_dir / "action"
     save_action_dir.mkdir(parents=True, exist_ok=True)
+    save_reward_dir = save_dir / "reward"
+    save_reward_dir.mkdir(parents=True, exist_ok=True)
 
     # env setup
     env = gym.make("MineRLMySetting-v0")
@@ -282,6 +284,7 @@ if __name__ == "__main__":
     obs = env.reset()
     obs = obs["pov"]
     obs = cv2.resize(obs, (image_w, image_h))
+    reward = 0
     progress_bar = tqdm(range(args.total_timesteps), dynamic_ncols=True)
     for global_step in range(args.total_timesteps):
         # put action logic here
@@ -308,6 +311,8 @@ if __name__ == "__main__":
                 k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in env_action.items()
             }
             json.dump(action_serializable, f)
+        with (save_reward_dir / f"{global_step:08d}.json").open("w") as f:
+            f.write(str(reward))
 
         # execute the game and log data.
         next_obs, reward, termination, info = env.step(env_action)
