@@ -24,7 +24,9 @@ class MySettingWrapper(gym.Wrapper):
         observation, reward, done, info = super().step(action)
         if self.previous_inventory_action == 0 and action["inventory"] == 1:
             self.open_inventory = not self.open_inventory
-        if not self.open_inventory:
+        if self.open_inventory:
+            reward -= 1
+        else:
             reward += 1
         self.previous_inventory_action = action["inventory"]
         self.num_steps += 1
