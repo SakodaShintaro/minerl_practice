@@ -397,6 +397,9 @@ if __name__ == "__main__":
                 data_dict = {
                     "charts/global_step": global_step,
                     "charts/elapse_time_sec": elapsed_time,
+                    "losses/min_q": min_q.mean().item(),
+                    "losses/min_qf_next_target": min_qf_next_target.mean().item(),
+                    "losses/next_q_value": next_q_value.mean().item(),
                     "losses/qf1_values": qf1_a_values.mean().item(),
                     "losses/qf2_values": qf2_a_values.mean().item(),
                     "losses/qf1_loss": qf1_loss.item(),
