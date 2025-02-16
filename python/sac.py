@@ -285,6 +285,7 @@ if __name__ == "__main__":
     obs = obs["pov"]
     obs = cv2.resize(obs, (image_w, image_h))
     reward = 0
+    prev_inventory_action = 0
     progress_bar = tqdm(range(args.total_timesteps), dynamic_ncols=True)
     for global_step in range(args.total_timesteps):
         # put action logic here
@@ -300,6 +301,10 @@ if __name__ == "__main__":
             base_action, _, _ = actor.get_action(latent)
             base_action = base_action[0].detach().cpu().numpy()
             env_action = convert_to_env_action(base_action)
+
+        if prev_inventory_action == 1:
+            env_action["inventory"] = 0
+        prev_inventory_action = env_action["inventory"]
 
         # save
         cv2.imwrite(
