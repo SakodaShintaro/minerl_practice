@@ -308,6 +308,7 @@ if __name__ == "__main__":
         if total_step % 10 == 0:
             step_data = {
                 "global_step": total_step,
+                "reward": reward,
                 "losses/actor_loss": stats["policy_loss"],
                 "losses/qf1_values": stats["q"],
                 "losses/alpha": stats["alpha"],
