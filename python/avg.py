@@ -16,6 +16,7 @@ import numpy as np
 import torch
 from diffusers.models import AutoencoderKL
 from torchvision import transforms
+from tqdm import tqdm
 
 import my_env
 import wandb
@@ -35,7 +36,6 @@ INPUT_DIM = Z_H * H_W * Z_CH
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", default=42, type=int)
-    parser.add_argument("--N", default=2_000_000, type=int)
     parser.add_argument("--actor_lr", default=0.00063, type=float)
     parser.add_argument("--critic_lr", default=0.00087, type=float)
     parser.add_argument("--alpha_lr", default=1e-2, type=float)
@@ -268,7 +268,9 @@ if __name__ == "__main__":
     obs = cv2.resize(obs, (IMAGE_W, IMAGE_H))
     data_list = []
 
-    for total_step in range(1, args.N + 1):
+    progress = tqdm(total=my_env.TIMEOUT)
+
+    for total_step in range(1, my_env.TIMEOUT + 1):
         # N.B: Action is a torch.Tensor
         obs_tensor = transform(obs)
         obs_tensor = obs_tensor.unsqueeze(0).to(args.device)
@@ -310,3 +312,5 @@ if __name__ == "__main__":
                 "losses/alpha_loss": stats["alpha_loss"],
             }
             wandb.log(step_data)
+
+        progress.update(1)
