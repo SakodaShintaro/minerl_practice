@@ -147,7 +147,6 @@ if __name__ == "__main__":
     # env = MockMineRL()  # noqa: ERA001
     vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(device)
 
-    action_dim = 24
     image_h = 360 // 5
     image_w = 640 // 5
     z_h = image_h // 8
@@ -155,17 +154,21 @@ if __name__ == "__main__":
     z_ch = 4
     input_dim = z_h * z_w * z_ch
 
-    actor = Actor(input_dim=input_dim, hidden_dim=256, action_dim=24, use_normalize=False)
-    actor = actor.to(device)
+    actor = Actor(
+        input_dim=input_dim,
+        hidden_dim=256,
+        action_dim=my_env.ACTION_DIM,
+        use_normalize=False,
+    ).to(device)
     qf1 = SoftQNetwork(
         input_dim=input_dim,
-        action_dim=action_dim,
+        action_dim=my_env.ACTION_DIM,
         hidden_dim=256,
         use_normalize=False,
     ).to(device)
     qf2 = SoftQNetwork(
         input_dim=input_dim,
-        action_dim=action_dim,
+        action_dim=my_env.ACTION_DIM,
         hidden_dim=256,
         use_normalize=False,
     ).to(device)
@@ -173,7 +176,7 @@ if __name__ == "__main__":
     actor_optimizer = optim.Adam(list(actor.parameters()), lr=args.policy_lr)
 
     # Automatic entropy tuning
-    target_entropy = -action_dim
+    target_entropy = -my_env.ACTION_DIM
     log_alpha = torch.zeros(1, requires_grad=True, device=device)
     alpha = log_alpha.exp().item()
     a_optimizer = optim.Adam([log_alpha], lr=args.q_lr)
@@ -183,7 +186,7 @@ if __name__ == "__main__":
     rb = ReplayBuffer(
         args.buffer_size,
         np.array([image_h, image_w, 3]),
-        np.array([24]),
+        np.array([my_env.ACTION_DIM]),
         device,
     )
     start_time = time.time()

@@ -8,6 +8,7 @@ from minerl.herobraine.hero.handlers.translation import TranslationHandler
 from minerl.herobraine.hero.mc import ALL_ITEMS
 
 TIMEOUT = 18000
+ACTION_DIM = 24
 
 
 def dict_action_to_array_action(action: dict) -> np.ndarray:
