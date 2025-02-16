@@ -110,8 +110,6 @@ class Args:
     """the learning rate of the Q network network optimizer"""
 
 
-
-
 if __name__ == "__main__":
     args = tyro.cli(Args)
     args.total_timesteps = my_env.TIMEOUT
