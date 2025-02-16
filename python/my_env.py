@@ -1,4 +1,5 @@
 import gym
+import numpy as np
 from minerl.env import _fake, _singleagent
 from minerl.herobraine.env_specs.human_survival_specs import HumanSurvival
 from minerl.herobraine.hero import handlers
@@ -7,6 +8,65 @@ from minerl.herobraine.hero.handlers.translation import TranslationHandler
 from minerl.herobraine.hero.mc import ALL_ITEMS
 
 TIMEOUT = 18000
+
+
+def dict_action_to_array_action(action: dict) -> np.ndarray:
+    return np.array(
+        [
+            *action["camera"],
+            action["attack"],
+            action["back"],
+            action["drop"],
+            action["forward"],
+            action["hotbar.1"],
+            action["hotbar.2"],
+            action["hotbar.3"],
+            action["hotbar.4"],
+            action["hotbar.5"],
+            action["hotbar.6"],
+            action["hotbar.7"],
+            action["hotbar.8"],
+            action["hotbar.9"],
+            action["inventory"],
+            action["jump"],
+            action["left"],
+            action["pickItem"],
+            action["right"],
+            action["sneak"],
+            action["sprint"],
+            action["swapHands"],
+            action["use"],
+        ],
+        dtype=np.float32,
+    )
+
+
+def array_action_to_dict_action(action: np.ndarray) -> dict:
+    return {
+        "camera": action[:2],
+        "attack": int(np.random.binomial(1, action[2])),
+        "back": int(np.random.binomial(1, action[3])),
+        "drop": int(np.random.binomial(1, action[4])),
+        "forward": int(np.random.binomial(1, action[5])),
+        "hotbar.1": int(np.random.binomial(1, action[6])),
+        "hotbar.2": int(np.random.binomial(1, action[7])),
+        "hotbar.3": int(np.random.binomial(1, action[8])),
+        "hotbar.4": int(np.random.binomial(1, action[9])),
+        "hotbar.5": int(np.random.binomial(1, action[10])),
+        "hotbar.6": int(np.random.binomial(1, action[11])),
+        "hotbar.7": int(np.random.binomial(1, action[12])),
+        "hotbar.8": int(np.random.binomial(1, action[13])),
+        "hotbar.9": int(np.random.binomial(1, action[14])),
+        "inventory": int(np.random.binomial(1, action[15])),
+        "jump": int(np.random.binomial(1, action[16])),
+        "left": int(np.random.binomial(1, action[17])),
+        "pickItem": int(np.random.binomial(1, action[18])),
+        "right": int(np.random.binomial(1, action[19])),
+        "sneak": int(np.random.binomial(1, action[20])),
+        "sprint": int(np.random.binomial(1, action[21])),
+        "swapHands": int(np.random.binomial(1, action[22])),
+        "use": int(np.random.binomial(1, action[23])),
+    }
 
 
 class MySettingWrapper(gym.Wrapper):
@@ -56,7 +116,6 @@ OBTAIN_DIAMOND_SHOVEL_ENTRY_POINT = "my_env:_my_setting_gym_entrypoint"
 
 
 class MySettingEnvSpec(HumanSurvival):
-
     def __init__(self) -> None:
         super().__init__(
             name="MineRLMySetting-v0",
