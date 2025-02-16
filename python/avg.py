@@ -7,14 +7,12 @@ import argparse
 import logging
 import os
 import time
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
 import cv2
 import gym
 import numpy as np
-import pandas as pd
 import torch
 from diffusers.models import AutoencoderKL
 from torchvision import transforms
@@ -38,8 +36,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--N", default=2_000_000, type=int)
-    parser.add_argument("--actor_lr", default=0.0063, type=float)
-    parser.add_argument("--critic_lr", default=0.0087, type=float)
+    parser.add_argument("--actor_lr", default=0.00063, type=float)
+    parser.add_argument("--critic_lr", default=0.00087, type=float)
     parser.add_argument("--alpha_lr", default=1e-2, type=float)
     parser.add_argument("--beta1", default=0.0, type=float)
     parser.add_argument("--gamma", default=0.9, type=float)
@@ -261,9 +259,7 @@ if __name__ == "__main__":
 
     # Interaction
     reward_processor = RewardProcessor(args.reward_processing_type)
-    episode_stats = defaultdict(list)
-    episode_id = 1
-    sum_reward, ep_step = 0, 0
+    sum_reward = 0
     sum_delta, sum_lprob = 0, 0
     sum_reward_normed = 0
     terminated = False
@@ -301,11 +297,10 @@ if __name__ == "__main__":
         sum_lprob += lprob.item()
         sum_reward += reward
         sum_reward_normed += reward_normed
-        ep_step += 1
 
         obs = next_obs
 
-        if total_step % 10 == 0:
+        if total_step % 1 == 0:
             step_data = {
                 "global_step": total_step,
                 "reward": reward,
@@ -315,63 +310,3 @@ if __name__ == "__main__":
                 "losses/alpha_loss": stats["alpha_loss"],
             }
             wandb.log(step_data)
-
-        # Termination
-        if terminated:
-            curr_ave_delta = sum_delta / ep_step
-            curr_ave_lprob = sum_lprob / ep_step
-            duration_total_sec = int(time.time() - tic)
-
-            data_dict = {
-                "charts/elapse_time_sec": duration_total_sec,
-                "episode_id": episode_id,
-                "episodic_length": ep_step,
-                "episodic_return": sum_reward,
-                "episodic_return_normed": sum_reward_normed,
-                "losses/qf1_loss": curr_ave_delta,
-                "losses/log_pi": curr_ave_lprob,
-                "global_step": total_step,
-            }
-
-            data_list.append(data_dict)
-            df = pd.DataFrame(data_list)
-            df.to_csv(f"{save_dir}/result.tsv", index=False, sep="\t")
-            wandb.log(data_dict)
-
-            episode_stats["episode_id"].append(episode_id)
-            episode_stats["steps"].append(ep_step)
-            episode_stats["return"].append(sum_reward)
-            episode_stats["return_normed"].append(sum_reward_normed)
-            episode_stats["ave_delta"].append(curr_ave_delta)
-            episode_stats["ave_lprob"].append(curr_ave_lprob)
-
-            if episode_id % args.print_interval_episode == 0:
-                ave_return = np.mean(episode_stats["return"])
-                ave_return_normed = np.mean(episode_stats["return_normed"])
-                ave_steps = np.mean(episode_stats["steps"])
-                ave_delta = np.mean(episode_stats["ave_delta"])
-                ave_lprob = np.mean(episode_stats["ave_lprob"])
-                episode_stats = defaultdict(list)
-                duration_min = duration_total_sec // 60
-                duration_hor = duration_min // 60
-                duration_sec = duration_total_sec % 60
-                duration_min = duration_min % 60
-                duration_str = f"{duration_hor:03d}h:{duration_min:02d}m:{duration_sec:02d}s"
-                logger.info(
-                    f"{duration_str}\t"
-                    f"Episode: {episode_id:,}\t"
-                    f"Step: {ave_steps:7.2f}\t"
-                    f"Return: {ave_return:.2f}\t"
-                    f"ReturnNormed: {ave_return_normed:.2f}\t"
-                    f"Delta: {ave_delta:.2f}\t"
-                    f"lprob: {ave_lprob:.2f}\t"
-                    f"TotalStep: {total_step:,}",
-                )
-
-            obs, _ = env.reset()
-            agent.reset_eligibility_traces()
-            sum_reward, ep_step = 0, 0
-            sum_delta, sum_q = 0, 0
-            sum_lprob = 0
-            sum_reward_normed = 0
-            episode_id += 1
