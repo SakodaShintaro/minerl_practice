@@ -1,5 +1,6 @@
 import argparse
 import logging
+from collections import OrderedDict
 from pathlib import Path
 from time import time
 
@@ -21,7 +22,6 @@ from utils import (
     second_to_str,
     update_ema,
 )
-from collections import OrderedDict
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,7 +51,7 @@ def fix_inv_dict(inv: OrderedDict) -> dict:
                 total_num += int(v)
         else:
             print(k, v, type(v), v.shape)
-            assert False
+            raise AssertionError()
     return result, total_num
 
 
