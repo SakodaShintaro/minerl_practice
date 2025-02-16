@@ -22,7 +22,7 @@ import wandb
 from network import Actor, SoftQNetwork
 from reward_processor import RewardProcessor
 from td_error_scaler import TDErrorScaler
-from train_diffusion.mock_env import MockMineRL  # noqa: F401
+from train_diffusion.mock_env import MockMineRL
 
 IMAGE_H = 360 // 5
 IMAGE_W = 640 // 5
@@ -54,6 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gpu_id", default=0, type=int)
     parser.add_argument("--print_interval_episode", default=50, type=int)
     parser.add_argument("--without_entorpy_term", action="store_true")
+    parser.add_argument("--use_mock_env", action="store_true")
     return parser.parse_args()
 
 
@@ -234,8 +235,7 @@ if __name__ == "__main__":
         logger.info(f"  {arg}: {value}")
 
     # Env
-    # env = MockMineRL()  # noqa: ERA001
-    env = gym.make("MineRLMySetting-v0")
+    env = (MockMineRL() if args.use_mock_env else gym.make("MineRLMySetting-v0"))
     vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema").to(args.device)
 
     #### Reproducibility
