@@ -124,10 +124,19 @@ class AVG:
         lprob: torch.Tensor,
     ) -> None:
         """Update the actor and critic networks based on the observed transition."""
+
+        # entropy term
+        alpha = self.log_alpha.exp().item() if self.log_alpha is not None else 0.0
+
+        # Policy loss
+        ploss = alpha * lprob - self.Q(obs, action)  # N.B: USE reparametrized action
+        self.popt.zero_grad()
+        ploss.backward()
+        self.popt.step()
+
         #### Q loss
         q = self.Q(obs, action.detach())  # N.B: Gradient should NOT pass through action here
         with torch.no_grad():
-            alpha = self.log_alpha.exp().item() if self.log_alpha is not None else 0.0
             next_action, next_lprob, mean = self.actor.get_action(next_obs)
             q2 = self.Q(next_obs, next_action)
             target_value = q2 - alpha * next_lprob
@@ -143,12 +152,6 @@ class AVG:
 
         delta = reward + (1 - done) * self.gamma * target_value - q
         delta /= self.td_error_scaler.sigma
-
-        # Policy loss
-        ploss = alpha * lprob - self.Q(obs, action)  # N.B: USE reparametrized action
-        self.popt.zero_grad()
-        ploss.backward()
-        self.popt.step()
 
         self.qopt.zero_grad()
         if self.use_eligibility_trace:
@@ -174,6 +177,8 @@ class AVG:
         self.steps += 1
 
         return {
+            "next_action": next_action,
+            "next_lprob": next_lprob,
             "delta": delta.item(),
             "q": q.item(),
             "policy_loss": ploss.item(),
