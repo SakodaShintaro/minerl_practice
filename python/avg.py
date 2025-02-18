@@ -262,6 +262,16 @@ if __name__ == "__main__":
     # Learner
     agent = AVG(args)
 
+    def obs_to_latent(obs: dict) -> torch.Tensor:
+        obs = obs["pov"]
+        obs = cv2.resize(obs, (IMAGE_W, IMAGE_H))
+        obs_tensor = transform(obs)
+        obs_tensor = obs_tensor.unsqueeze(0).to(args.device)
+        with torch.no_grad():
+            latent_image = vae.encode(obs_tensor).latent_dist.sample().mul_(0.18215)
+            latent = latent_image.flatten(start_dim=1)
+        return latent
+
     # Interaction
     reward_processor = RewardProcessor(args.reward_processing_type)
     sum_reward = 0
@@ -269,20 +279,12 @@ if __name__ == "__main__":
     sum_reward_normed = 0
     terminated = False
     obs = env.reset()
-    obs = obs["pov"]
-    obs = cv2.resize(obs, (IMAGE_W, IMAGE_H))
+    latent = obs_to_latent(obs)
     data_list = []
 
     progress = tqdm(total=my_env.TIMEOUT)
 
     for total_step in range(1, my_env.TIMEOUT + 1):
-        # N.B: Action is a torch.Tensor
-        obs_tensor = transform(obs)
-        obs_tensor = obs_tensor.unsqueeze(0).to(args.device)
-        with torch.no_grad():
-            latent_image = vae.encode(obs_tensor).latent_dist.sample().mul_(0.18215)
-            latent = latent_image.flatten(start_dim=1)
-
         action, lprob, mean = agent.actor.get_action(latent)
         array_action = action.detach().cpu().view(-1).numpy()
         dict_action = my_env.array_action_to_dict_action(array_action)
@@ -290,13 +292,7 @@ if __name__ == "__main__":
         # Receive reward and next state
         next_obs, reward, termination, info = env.step(dict_action)
         env.render()
-        next_obs = next_obs["pov"]
-        next_obs = cv2.resize(next_obs, (IMAGE_W, IMAGE_H))
-        with torch.no_grad():
-            next_obs_tensor = transform(next_obs)
-            next_obs_tensor = next_obs_tensor.unsqueeze(0).to(args.device)
-            next_latent_image = vae.encode(next_obs_tensor).latent_dist.sample().mul_(0.18215)
-            next_latent = next_latent_image.flatten(start_dim=1)
+        next_latent = obs_to_latent(next_obs)
 
         reward_normed = reward_processor.normalize(reward)
         stats = agent.update(latent, action, next_latent, reward_normed, terminated, lprob)
@@ -306,6 +302,7 @@ if __name__ == "__main__":
         sum_reward_normed += reward_normed
 
         obs = next_obs
+        latent = next_latent
 
         if total_step % 1 == 0:
             step_data = {
