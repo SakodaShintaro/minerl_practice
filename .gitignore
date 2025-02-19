@@ -4,3 +4,4 @@ dataset
 *.json
 *.pyc
 wandb
+hf_cache
